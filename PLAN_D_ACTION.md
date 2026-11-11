@@ -40,11 +40,11 @@ Objectif : répondre "oui" aux 5 questions du status report.
 - [ ] Rédiger le status report S2
 
 ### Simon (Data Engineer)
-- [ ] `src/download_data.py` : téléchargement de l'archive Transfermarkt
-- [ ] Nettoyage des transferts : retirer retours de prêt, fins de carrière, transferts vers l'équipe réserve ; marquer les prêts
-- [ ] Sélection d'une dizaine de championnats bien couverts et des clubs avec au moins 10 transferts
-- [ ] Schéma SQLite de la table `interactions` (club, joueur, action, timestamp)
-- [ ] Première version de l'endpoint `/log_interaction`
+- [ ] `src/download_data.py` : téléchargement de l'archive Transfermarkt (code prêt, à lancer sur une machine de l'équipe)
+- [ ] Nettoyage des transferts : retirer retours de prêt, fins de carrière, transferts vers l'équipe réserve ; marquer les prêts (`src/clean_transfers.py`, testé sur données de test, à lancer sur les vraies données)
+- [ ] Sélection d'une dizaine de championnats bien couverts et des clubs avec au moins 10 transferts (même script, réglages dans `src/config.py`)
+- [x] Schéma SQLite de la table `interactions` (club, joueur, action, timestamp) : `src/db.py`
+- [x] Première version de l'endpoint `/log_interaction` : `api/interactions.py`, testée
 
 ### Gautier (Lead ML Engineer)
 - [ ] Construction du graphe biparti club / joueur dans PyTorch Geometric à partir des transferts d'entraînement
