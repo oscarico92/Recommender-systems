@@ -1,0 +1,12 @@
+# Data is not versioned (see data/README.md)
+data/raw/
+data/processed/
+*.db
+*.sqlite
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
