@@ -86,7 +86,7 @@ The player features (`src/features.py`) are built automatically at each cutoff a
 
 ## Approach
 
-- **Data**: the open [Transfermarkt dataset](https://github.com/dcaribou/transfermarkt-datasets) (CC0, snapshot of 6 July 2026). 175,165 transfers are cleaned into 26,372 recruitments by 322 clubs of 10 leagues (loans flagged, returns from loan, retirements, youth and reserve moves removed).
+- **Data**: the open [Transfermarkt dataset](https://github.com/dcaribou/transfermarkt-datasets) (CC0, snapshot of 6 July 2026). 175,165 transfers are cleaned into 26,369 recruitments by 322 clubs of 10 leagues (loans flagged, returns from loan, retirements, youth and reserve moves removed).
 - **Base model**: LightGCN (He et al., SIGIR 2020, [arXiv:2002.02126](https://arxiv.org/abs/2002.02126)) on the bipartite club / player graph, PyTorch Geometric implementation, BPR loss with uniform negative sampling.
 - **Cold-start encoder**: an MLP maps 48 player features (age, position, height, market value and its trend, minutes, goals and assists per 90, European games, league, nationality) to the LightGCN embedding space, trained by distillation on the players that are in the graph. It scores players who have never been transferred.
 - **Two lists**: the main list is ranked by LightGCN. The "new talents" list ranks, with the encoder, the players unknown to the graph (no recruitment by a club of the 10 leagues in the last 10 years). The user can also give a few places of the main list to new talents (`cold_slots`, 0 by default because it lowered NDCG@10 on the validation season).
@@ -119,8 +119,8 @@ New talents list (players unknown to the graph, 60% of the catalogue):
 | Model | NDCG@10 on their recruitments |
 | --- | --- |
 | Random | 0.0006 |
-| Highest market value | 0.0066 |
-| **Cold-start encoder** | **0.0319** |
+| Highest market value | 0.0067 |
+| **Cold-start encoder** | **0.0312** |
 
 What it shows:
 

@@ -20,7 +20,7 @@ python -m src.clean_transfers
 
 | Output | Content |
 | --- | --- |
-| `data/processed/interactions.parquet` | One row per recruitment: `club_id` (user), `player_id` (item), `from_club_id`, `transfer_date`, `transfer_season`, `fee_eur`, `market_value_eur`, `is_loan`, `is_free`, `league_id` |
+| `data/processed/interactions.parquet` | One row per recruitment: `club_id` (user), `player_id` (item), `from_club_id`, `transfer_date`, `transfer_season`, `fee_eur`, `market_value_eur`, `is_loan`, `possible_loan`, `is_free`, `league_id` |
 | `data/processed/clubs.parquet` | The selected clubs: `club_id`, `club_name`, `league_id`, `n_transfers` |
 | `data/processed/cleaning_report.json` | Number of rows left after each step (to quote in the status reports) |
 
@@ -30,8 +30,8 @@ A transfer is kept as an interaction only if it is a recruitment choice made by 
 
 | Step | Rule | Why |
 | --- | --- | --- |
-| 1 | Drop rows with a missing player, club or date, exact duplicates, and transfers dated after the run date | Unusable or not done yet |
-| 2 | Detect loans: A to B then B to A within 760 days, both without a fee. The first move is kept with `is_loan = True`, the return is dropped | A return from loan is not a recruitment |
+| 1 | Drop rows with a missing player, club or date, exact duplicates, and transfers dated after the snapshot (`SNAPSHOT_DATE = 2026-07-06` in `src/config.py`) | Unusable or announced but not done; the output does not depend on the day the script is run |
+| 2 | Detect loans: A to B then B to A within 760 days, both without a fee. The first move is kept with `is_loan = True`, the return is dropped. A move without fee that is the player's last known move and less than 760 days before the snapshot gets `possible_loan = True` | A return from loan is not a recruitment. Recent loans cannot be confirmed yet because their return has not happened |
 | 3 | Drop moves to a pseudo club (`Retired`, `Without Club`, `Unknown`, `Career break`, ...) | End of career, not a recruitment. Signing a player who was without club is kept |
 | 4 | Drop moves to a youth or reserve team (`U19`, `U21`, `B`, `II`, `Castilla`, ...) and promotions from a club's own academy to its first team | Internal decisions, not market choices. A player bought from another club's academy is kept |
 | 5 | Keep only recruiting clubs from the 10 selected leagues (`src/config.py`) | Good data coverage |
@@ -44,14 +44,14 @@ The loans are detected on the full history, before the other filters, so that a 
 | Step | Rows left |
 | --- | --- |
 | Raw transfers | 175,165 |
-| 1. Basic cleaning | 174,690 |
-| 2. Without returns from loan | 141,391 |
-| 3. Without pseudo clubs | 137,404 |
-| 4. Without youth, reserve and internal moves | 95,011 |
-| 5. Recruiting club in the 10 leagues | 26,398 |
-| 6. Clubs with at least 10 recruitments | **26,372** |
+| 1. Basic cleaning (up to the snapshot date 2026-07-06) | 174,645 |
+| 2. Without returns from loan | 141,371 |
+| 3. Without pseudo clubs | 137,384 |
+| 4. Without youth, reserve and internal moves | 94,991 |
+| 5. Recruiting club in the 10 leagues | 26,395 |
+| 6. Clubs with at least 10 recruitments | **26,369** |
 
-Final dataset: 26,372 interactions, 322 clubs (median 85 recruitments per club), 9,880 players, from 1999-07-01 to 2026-09-03. 31% are loans, 20% free transfers, and the fee is unknown for 16%. From 2019 on there are about 2,000 to 3,000 recruitments per year.
+Final dataset: 26,369 interactions, 322 clubs (median 85 recruitments per club), 9,877 players, from 1999-07-01 to 2026-07-02. 31% are detected loans, 5% possible loans (see below), 16.5% free transfers, and the fee is unknown for 16%. From 2019 on there are about 2,000 to 3,000 recruitments per year.
 
 Manual check: the 2023 signings of Manchester United come out right (Mount, Onana and Højlund bought, Evans free, Sabitzer, Weghorst, Butland, Reguilón and Amrabat flagged as loans).
 
@@ -59,7 +59,8 @@ Manual check: the 2023 signings of Manchester United come out right (Mount, Onan
 
 - **Loans are inferred.** In the public table, a loan, an end of loan and a free transfer all have `transfer_fee = 0`. A loan made permanent (option to buy) or a loan longer than 760 days is seen as a normal transfer. A player who leaves for free and comes back within two years is seen as a loan.
 - **The league of a club is its current one** (`clubs.domestic_competition_id`). A club relegated before the snapshot is not in the selection, even for its older seasons.
-- **A few transfers are dated after the snapshot** (3 rows, announced for the summer 2026 window). They stay in the data but fall in the test season.
+- **Recent loans are not confirmed.** A loan is only recognised once the player comes back, so for the last two seasons `is_loan` is underestimated: 28% of the 2025/26 recruitments are detected loans against about 31% before. `possible_loan` flags the recent one-way moves without fee (29% of 2025/26). It also catches real free transfers, so the true loan share of the test season is between 28% and 57%. The flag is descriptive only, see the next point.
+- **Loans count as full recruitments.** The project plan said loans would be a weaker interaction. We kept them as full interactions for now: a loan is a recruitment decision of the club, and an unequal weight would also depend on the loan definition, which is not the same at the end of the period. `is_loan` and `possible_loan` are kept so that a lower weight can be tested in week 4.
 - **`transfer_fee` is null when unknown**, so `fee_eur` must not be read as 0 in that case.
 
 ## 3. Player features

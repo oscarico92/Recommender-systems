@@ -107,3 +107,24 @@ def test_min_club_transfers():
     inter, clubs, _ = run(rows, min_club=2)
     assert set(inter.club_id) == {1}
     assert list(clubs.club_id) == [1] and clubs.n_transfers.iloc[0] == 3
+
+
+def test_default_snapshot_drops_later_transfers():
+    df = pd.DataFrame([t(40, "2026-07-01", 2, 1, "Beta FC", "Alpha FC", 1e6),
+                       t(41, "2026-09-03", 2, 1, "Beta FC", "Alpha FC", 1e6)], columns=COLS)
+    inter, _, _ = clean_transfers(df, CLUBS, leagues={"FR1": ""}, min_club_transfers=1)
+    assert list(inter.player_id) == [40]
+
+
+def test_recent_one_way_free_move_is_possible_loan():
+    # reviewer's case: A -> B in January 2026 with no fee and no return yet
+    inter, _, rep = run([
+        t(42, "2026-01-15", 1, 2, "Alpha FC", "Beta FC", 0),
+        t(43, "2020-01-15", 1, 2, "Alpha FC", "Beta FC", 0),     # old one-way free move
+        t(44, "2026-01-15", 1, 2, "Alpha FC", "Beta FC", 3e6),   # paid move
+    ])
+    row = inter.set_index("player_id")
+    assert row.loc[42, "possible_loan"] and not row.loc[42, "is_free"] and not row.loc[42, "is_loan"]
+    assert not row.loc[43, "possible_loan"] and row.loc[43, "is_free"]
+    assert not row.loc[44, "possible_loan"]
+    assert rep["n_possible_loans"] == 1

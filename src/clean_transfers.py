@@ -10,9 +10,12 @@ Output: data/processed/interactions.parquet   one row per recruitment
 
 Cleaning rules (see data/README.md for the reasons):
  1. drop rows with a missing player, club or date, exact duplicates and
-    transfers dated after the run date (announced but not done yet)
+    transfers dated after the snapshot (SNAPSHOT_DATE)
  2. detect loans: A -> B then B -> A within MAX_LOAN_DAYS, both with a fee
-    of 0 or unknown. The first move is flagged is_loan, the return is dropped
+    of 0 or unknown. The first move is flagged is_loan, the return is dropped.
+    A move without fee that is the player's last known move and is less than
+    MAX_LOAN_DAYS before the snapshot may be a loan whose return has not
+    happened yet: it is flagged possible_loan
  3. drop moves to a pseudo club (Retired, Without Club, Unknown, ...)
  4. drop moves to a youth or reserve team, and promotions from a club's own
     youth or reserve team to its first team
@@ -33,6 +36,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import (
+    SNAPSHOT_DATE,
     LEAGUES,
     MAX_LOAN_DAYS,
     MIN_CLUB_TRANSFERS,
@@ -77,7 +81,7 @@ def load_table(table: str, raw_dir: Path = RAW_DIR) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def detect_loans(df: pd.DataFrame, max_loan_days: int = MAX_LOAN_DAYS) -> pd.DataFrame:
+def detect_loans(df: pd.DataFrame, max_loan_days: int = MAX_LOAN_DAYS, snapshot: str | None = None) -> pd.DataFrame:
     """Add is_loan (outgoing loan) and is_loan_return (end of loan) flags.
 
     The public table stores loans, ends of loan and free transfers all with a
@@ -96,6 +100,12 @@ def detect_loans(df: pd.DataFrame, max_loan_days: int = MAX_LOAN_DAYS) -> pd.Dat
     df["is_loan"] = is_loan
     # The row right after a detected loan is its return.
     df["is_loan_return"] = np.concatenate([[False], is_loan[:-1]])
+    # Last known move without fee, too recent for its return to be observed.
+    if snapshot is not None:
+        recent = df["transfer_date"] > pd.Timestamp(snapshot) - pd.Timedelta(days=max_loan_days)
+        df["possible_loan"] = (no_fee & nxt["transfer_date"].isna() & recent & ~df["is_loan"]).to_numpy()
+    else:
+        df["possible_loan"] = False
     return df
 
 
@@ -105,9 +115,12 @@ def clean_transfers(
     leagues: dict[str, str] = LEAGUES,
     min_club_transfers: int = MIN_CLUB_TRANSFERS,
     max_loan_days: int = MAX_LOAN_DAYS,
-    today: date | None = None,
+    today: date | str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    """Return (interactions, selected clubs, report)."""
+    """Return (interactions, selected clubs, report).
+
+    `today` is the snapshot date (default SNAPSHOT_DATE): later transfers are dropped.
+    """
     report: dict[str, int] = {}
 
     def log(step: str, frame: pd.DataFrame) -> None:
@@ -122,12 +135,12 @@ def clean_transfers(
     for col in ("player_id", "from_club_id", "to_club_id"):
         df[col] = df[col].astype("int64")
     df = df.drop_duplicates(subset=["player_id", "transfer_date", "from_club_id", "to_club_id"])
-    cutoff = pd.Timestamp(today or date.today())
+    cutoff = pd.Timestamp(today or SNAPSHOT_DATE)
     df = df[df["transfer_date"] <= cutoff]
     log("1_basic_cleaning", df)
 
     # 2. loans
-    df = detect_loans(df, max_loan_days)
+    df = detect_loans(df, max_loan_days, snapshot=str(cutoff.date()))
     df = df[~df["is_loan_return"]].drop(columns="is_loan_return")
     log("2_without_loan_returns", df)
 
@@ -161,7 +174,7 @@ def clean_transfers(
     interactions = (
         df.assign(
             fee_eur=df["transfer_fee"],
-            is_free=df["transfer_fee"].eq(0) & ~df["is_loan"],
+            is_free=df["transfer_fee"].eq(0) & ~df["is_loan"] & ~df["possible_loan"],
         )[
             [
                 "club_id",
@@ -172,6 +185,7 @@ def clean_transfers(
                 "fee_eur",
                 "market_value_in_eur",
                 "is_loan",
+                "possible_loan",
                 "is_free",
                 "league_id",
             ]
@@ -191,6 +205,7 @@ def clean_transfers(
     report["n_clubs"] = int(interactions["club_id"].nunique())
     report["n_players"] = int(interactions["player_id"].nunique())
     report["n_loans"] = int(interactions["is_loan"].sum())
+    report["n_possible_loans"] = int(interactions["possible_loan"].sum())
     report["first_date"] = str(interactions["transfer_date"].min().date()) if len(interactions) else None
     report["last_date"] = str(interactions["transfer_date"].max().date()) if len(interactions) else None
     return interactions, club_table, report
