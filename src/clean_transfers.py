@@ -42,11 +42,12 @@ from src.config import (
 )
 from src.download_data import find_local_file
 
-# Words that mark a youth or reserve team in a Transfermarkt club name,
-# e.g. "Manchester United U21", "Real Madrid Castilla", "FC Porto B".
+# Suffix that marks a youth or reserve team at the end of a Transfermarkt
+# club name, e.g. "Manchester United U21", "Real Madrid Castilla", "FC Porto B".
+# It must be at the end so that "B. Leverkusen" or "C. Rizespor" are not hit.
 _TEAM_SUFFIX = re.compile(
-    r"\b(ii|iii|b|c|u\d{2}|sub-?\d{2}|youth|yth\.?|reserves?|academy|"
-    r"jgd\.?|juniors?|primavera|castilla)\b",
+    r"\s(ii|iii|b|c|u\d{2}|sub-?\d{2}|youth|yth\.?|reserves?|academy|"
+    r"jgd\.?|juniors?|primavera|castilla)$",
     flags=re.IGNORECASE,
 )
 
@@ -63,7 +64,7 @@ def is_youth_or_reserve(name: object) -> bool:
 
 def parent_name(name: object) -> str:
     """Club name without its youth or reserve suffix."""
-    base = _TEAM_SUFFIX.sub(" ", normalise_name(name))
+    base = _TEAM_SUFFIX.sub("", normalise_name(name))
     return re.sub(r"\s+", " ", base).strip()
 
 
@@ -134,9 +135,12 @@ def clean_transfers(
     df = df[~df["to_club_name"].map(normalise_name).isin(NON_CLUB_NAMES)]
     log("3_without_pseudo_clubs", df)
 
-    # 4. youth and reserve teams, internal promotions
-    to_youth = df["to_club_name"].map(is_youth_or_reserve)
-    from_youth = df["from_club_name"].map(is_youth_or_reserve)
+    # 4. youth and reserve teams, internal promotions. A club listed in the
+    # clubs table plays in a first tier league, so it is never a youth or
+    # reserve team, even if its name looks like one ("Willem II").
+    first_teams = set(clubs["club_id"])
+    to_youth = df["to_club_name"].map(is_youth_or_reserve) & ~df["to_club_id"].isin(first_teams)
+    from_youth = df["from_club_name"].map(is_youth_or_reserve) & ~df["from_club_id"].isin(first_teams)
     same_parent = df["from_club_name"].map(parent_name) == df["to_club_name"].map(parent_name)
     df = df[~to_youth & ~(from_youth & same_parent)]
     log("4_without_youth_and_internal_moves", df)

@@ -40,9 +40,9 @@ Objectif : répondre "oui" aux 5 questions du status report.
 - [ ] Rédiger le status report S2
 
 ### Simon (Data Engineer)
-- [ ] `src/download_data.py` : téléchargement de l'archive Transfermarkt (code prêt, à lancer sur une machine de l'équipe)
-- [ ] Nettoyage des transferts : retirer retours de prêt, fins de carrière, transferts vers l'équipe réserve ; marquer les prêts (`src/clean_transfers.py`, testé sur données de test, à lancer sur les vraies données)
-- [ ] Sélection d'une dizaine de championnats bien couverts et des clubs avec au moins 10 transferts (même script, réglages dans `src/config.py`)
+- [x] `src/download_data.py` : téléchargement de l'archive Transfermarkt
+- [x] Nettoyage des transferts : retirer retours de prêt, fins de carrière, transferts vers l'équipe réserve ; marquer les prêts (`src/clean_transfers.py`, chiffres dans `data/README.md`)
+- [x] Sélection d'une dizaine de championnats bien couverts et des clubs avec au moins 10 transferts : 26 372 interactions, 322 clubs, 9 880 joueurs
 - [x] Schéma SQLite de la table `interactions` (club, joueur, action, timestamp) : `src/db.py`
 - [x] Première version de l'endpoint `/log_interaction` : `api/interactions.py`, testée
 
