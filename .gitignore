@@ -10,3 +10,7 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+
+# Models: only the exported serving model is versioned
+models/*
+!models/serving/
