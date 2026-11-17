@@ -52,6 +52,39 @@ def reranked(fitted, setup: EvalSetup, feats: pd.DataFrame, resale_weight: float
     return merge_with_cold_slots(np.array(warm_rank), np.array(cold_rank), fitted.config.cold_slots)
 
 
+def replace_slots(fi, n):
+    fi.config = replace(fi.config, cold_slots=n)
+    return fi
+
+
+def new_talents(setup: EvalSetup, scores: np.ndarray) -> dict:
+    """Metrics of a list made only of players unknown to the graph at the cutoff."""
+    s = np.array(scores, dtype=float, copy=True)
+    s[:, setup.is_warm] = -np.inf
+    m = evaluate(setup, s)
+    return {"ndcg@10": m["cold_ndcg@10"], "coverage@10": m["coverage@10"],
+            "within_budget@10": m["within_budget@10"], "value_change@10": m["value_change@10"]}
+
+
+def summarise(rows: dict[str, list[dict]], metrics: list[str]) -> pd.DataFrame:
+    table = []
+    for name, runs in rows.items():
+        df = pd.DataFrame(runs)
+        row = {"model": name}
+        for m in metrics:
+            row[m] = df[m].mean()
+            row[m + "_std"] = df[m].std(ddof=0) if len(df) > 1 else 0.0
+        table.append(row)
+    return pd.DataFrame(table)
+
+
+def markdown(table: pd.DataFrame, metrics: list[str]) -> list[str]:
+    lines = ["| Model | " + " | ".join(metrics) + " |", "| --- | " + " | ".join("---" for _ in metrics) + " |"]
+    for _, r in table.iterrows():
+        lines.append(f"| {r['model']} | " + " | ".join(fmt(r[m], r[m + '_std']) for m in metrics) + " |")
+    return lines
+
+
 def fmt(mean: float, std: float | None = None) -> str:
     if np.isnan(mean):
         return "n/a"
@@ -73,12 +106,17 @@ def main() -> int:
     rows["Highest market value"] = [evaluate(setup, market_value_scores(setup))]
 
     variants = {
-        "LightGCN alone": lambda fi: ranking(fi, setup, "lightgcn"),
+        "LightGCN alone": lambda fi: ranking(replace_slots(fi, 0), setup, "lightgcn"),
         "Feature encoder alone": lambda fi: ranking(fi, setup, "encoder"),
-        "LightGCN + cold-start encoder": lambda fi: ranking(fi, setup, "hybrid"),
-        "Full: + budget re-ranking": lambda fi: reranked(fi, setup, feats, 0.0),
-        "Full: + budget + resale (w=0.5)": lambda fi: reranked(fi, setup, feats, 0.5),
-        "Full: + budget + resale (w=1.0)": lambda fi: reranked(fi, setup, feats, 1.0),
+        "LightGCN + 2 places for new players": lambda fi: ranking(replace_slots(fi, 2), setup, "hybrid"),
+        "LightGCN + budget re-ranking": lambda fi: reranked(replace_slots(fi, 0), setup, feats, 0.0),
+        "LightGCN + budget + resale (w=0.5)": lambda fi: reranked(replace_slots(fi, 0), setup, feats, 0.5),
+        "LightGCN + budget + resale (w=1.0)": lambda fi: reranked(replace_slots(fi, 0), setup, feats, 1.0),
+    }
+    # "New talents" list: only players unknown to the graph at the cutoff
+    cold_rows: dict[str, list[dict]] = {
+        "Random": [new_talents(setup, random_scores(setup, s)) for s in SEEDS],
+        "Highest market value": [new_talents(setup, market_value_scores(setup))],
     }
     fitted_seed0 = None
     for seed in SEEDS:
@@ -87,32 +125,35 @@ def main() -> int:
             fitted_seed0 = fi
         for name, fn in variants.items():
             rows.setdefault(name, []).append(evaluate(setup, None, ranked=fn(fi)))
+        enc_scores = fi.club_emb @ fi.item_emb_enc.T
+        cold_rows.setdefault("Cold-start encoder (ours)", []).append(new_talents(setup, enc_scores))
         print(f"seed {seed} done", flush=True)
 
-    table = []
-    for name, runs in rows.items():
-        df = pd.DataFrame(runs)
-        row = {"model": name}
-        for m in METRICS:
-            row[m] = df[m].mean()
-            row[m + "_std"] = df[m].std(ddof=0) if len(df) > 1 else 0.0
-        table.append(row)
-    table = pd.DataFrame(table)
+    table = summarise(rows, METRICS)
+    cold_metrics = ["ndcg@10", "coverage@10", "within_budget@10", "value_change@10"]
+    cold_table = summarise(cold_rows, cold_metrics)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     table.to_csv(RESULTS_DIR / "test_results.csv", index=False)
+    cold_table.to_csv(RESULTS_DIR / "test_results_new_talents.csv", index=False)
 
     lines = [
         f"# Test results (season 2025/26, cutoff {TEST_START})",
         "",
         f"{len(setup.club_ids)} clubs, {len(setup.item_ids)} players in the catalogue, "
-        f"{setup.n_targets} target recruitments ({setup.target_coverage:.1%} in the catalogue). "
+        f"{setup.n_targets} target recruitments ({setup.target_coverage:.1%} in the catalogue), "
+        f"{(~setup.is_warm).sum()} catalogue players unknown to the graph at the cutoff. "
         f"Mean ± std over {len(SEEDS)} seeds. Config: `{json.dumps(cfg.__dict__)}`.",
         "",
-        "| Model | " + " | ".join(METRICS) + " |",
-        "| --- | " + " | ".join("---" for _ in METRICS) + " |",
+        "## Main list (all players)",
+        "",
+        *markdown(table, METRICS),
+        "",
+        "## New talents list (only players unknown to the graph at the cutoff)",
+        "",
+        "These players had no recruitment by a club of the 10 leagues in the 10 years before the cutoff, so LightGCN cannot score them. NDCG@10 is computed on the recruitments of such players only.",
+        "",
+        *markdown(cold_table, cold_metrics),
     ]
-    for _, r in table.iterrows():
-        lines.append(f"| {r['model']} | " + " | ".join(fmt(r[m], r[m + '_std']) for m in METRICS) + " |")
     (RESULTS_DIR / "test_results.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
 
@@ -126,7 +167,7 @@ def case_studies(fi, setup: EvalSetup, feats: pd.DataFrame) -> None:
     idx = setup.club_index
     out = [f"# Case studies (test cutoff {TEST_START}, full model, resale weight 0.5)", "",
            "A star marks a player the club actually signed after the cutoff. 'new' marks a player "
-           "never transferred before the cutoff (cold start).", ""]
+           "unknown to the graph at the cutoff (cold start).", ""]
     for club_id, name in CASE_CLUBS.items():
         if club_id not in idx:
             continue
@@ -144,6 +185,13 @@ def case_studies(fi, setup: EvalSetup, feats: pd.DataFrame) -> None:
                 note.append("new")
             out.append(f"| {r} | {p['name']} | {p['position']} | {p['age']:.0f} | {p['club_name']} | "
                        f"{p['value_eur'] / 1e6:.1f} | {p['value_trend']:+.2f} | {' '.join(note)} |")
+        enc = fi.club_emb[i] @ fi.item_emb_enc.T
+        enc[fi.in_graph] = -np.inf
+        enc[setup.exclude[i]] = -np.inf
+        new = np.argsort(-enc)[:5]
+        out += ["", "New talents (unknown to the graph): " + ", ".join(
+            f"{feats.iloc[j]['name']} ({feats.iloc[j]['club_name']}, {feats.iloc[j]['age']:.0f})"
+            + (" **signed**" if feats.iloc[j]['player_id'] in signed else "") for j in new)]
         actual = feats[feats["player_id"].isin(signed)]["name"].head(12).tolist()
         out += ["", "Actual signings in the catalogue: " + (", ".join(actual) if actual else "none"), ""]
     (RESULTS_DIR / "case_studies.md").write_text("\n".join(out) + "\n")

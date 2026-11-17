@@ -62,7 +62,25 @@ Manual check: the 2023 signings of Manchester United come out right (Mount, Onan
 - **A few transfers are dated after the snapshot** (3 rows, announced for the summer 2026 window). They stay in the data but fall in the test season.
 - **`transfer_fee` is null when unknown**, so `fee_eur` must not be read as 0 in that case.
 
-## 3. New interactions (SQLite)
+## 3. Player features
+
+```bash
+python -m src.features --cutoff 2025-07-01
+```
+
+`data/processed/player_features_<cutoff>.parquet`, built automatically by the training scripts. One row per player of the catalogue: players with a market valuation in the year before the cutoff, 36 or younger (17,628 players at 1 July 2025).
+
+| Group | Features | Source |
+| --- | --- | --- |
+| Profile | age, height, position, nationality (top 20) | `players` (fields that do not change) |
+| Market value | last value, peak value, log change over 12 months | `player_valuations` before the cutoff |
+| Club | club and league at the cutoff | last valuation before the cutoff |
+| Form, last 12 months | games, minutes, goals, assists and cards per 90, share of minutes in the 10 leagues, European games | `appearances` before the cutoff |
+| History | number of past transfers | `transfers` before the cutoff |
+
+**No leakage**: every feature only uses rows dated strictly before the cutoff. The snapshot fields of `players` that describe today (current club, current value, contract end) are never used. `tests/test_features_leakage.py` checks that adding future rows does not change the features.
+
+## 4. New interactions (SQLite)
 
 The app logs what a club user does with the recommended players. The database is `data/scoutai.db` (change it with the `SCOUTAI_DB_PATH` environment variable) and is created automatically.
 

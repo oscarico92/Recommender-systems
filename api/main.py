@@ -50,14 +50,15 @@ def recommend(
     k: int = Query(10, ge=1, le=50),
     budget_eur: float | None = Query(None, gt=0, description="Defaults to the club's usual budget"),
     resale_weight: float = Query(0.5, ge=0, le=3, description="Weight of the 12-month value trend"),
-    cold_slots: int | None = Query(None, ge=0, le=5, description="Places of the top 10 for never transferred players"),
+    cold_slots: int | None = Query(None, ge=0, le=5, description="Places of the top 10 for players unknown to the graph"),
     position: Literal["Goalkeeper", "Defender", "Midfield", "Attack"] | None = None,
+    new_talents: bool = Query(False, description="Only players unknown to the graph (no recruitment by a selected club in 10 years), ranked by the cold-start encoder"),
 ) -> dict:
     rec = get_recommender()
     start = time.perf_counter()
     try:
         items = rec.recommend(club_id, k=k, budget=budget_eur, resale_weight=resale_weight,
-                              cold_slots=cold_slots, position=position)
+                              cold_slots=cold_slots, position=position, only_new=new_talents)
     except KeyError:
         raise HTTPException(404, f"Unknown club_id {club_id}. See /clubs.")
     club = rec.clubs[rec.clubs["club_id"] == club_id].iloc[0]

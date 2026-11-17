@@ -35,9 +35,8 @@ def main() -> int:
     clubs["budget_eur"] = setup.club_budget
 
     names = _raw("players").set_index("player_id")["name"]
-    h = setup.history
-    h = h[h["transfer_date"] >= pd.Timestamp(SERVING_CUTOFF) - pd.Timedelta(days=5 * 365)]
-    history = h[["club_id", "player_id", "transfer_date"]].copy()
+    # full history: used to exclude past signings and, for the last 5 years, to explain
+    history = setup.history[["club_id", "player_id", "transfer_date"]].copy()
     history["player_name"] = names.reindex(history["player_id"]).fillna("?").to_numpy()
 
     # LightGCN embeddings of every player of the graph, for the explanations
