@@ -37,7 +37,7 @@ Objectif : répondre "oui" aux 5 questions du status report.
 - [x] Script de split temporel par saison (train, validation, test) : `src/split.py`
 - [x] Harness d'évaluation : NDCG@10 et Recall@20, testé : `eval/harness.py`
 - [x] Baselines aléatoire et "plus populaire" (plus "plus grosse valeur marchande") : `eval/baselines.py`
-- [ ] Rédiger le status report S2
+- [x] Rédiger le status report S2 (rendu le 16/11)
 
 ### Simon (Data Engineer)
 - [x] `src/download_data.py` : téléchargement de l'archive Transfermarkt
@@ -73,7 +73,8 @@ Objectif : répondre "oui" aux 7 questions, avec une preuve pour chacune.
 ### Oscar
 - [x] Tableau de résultats complet : baselines, LightGCN, cold-start, ablation : `eval/results/test_results.md`
 - [x] Audit anti-fuite (dates des features, des valeurs marchandes, du graphe) : `docs/week3_evidence.md`, `tests/test_features_leakage.py`
-- [ ] Rédiger le status report S3 avec les preuves (base : `docs/week3_evidence.md`)
+- [x] Revue de code de la PR #1 (deux tours de review), merge dans `main` (`a40c704`)
+- [x] Rédiger le status report S3 avec les preuves (base : `docs/week3_evidence.md`)
 
 ### Simon
 - [x] Table des features joueurs (stats et valeurs marchandes calculées avant la date de split) : `src/features.py`
@@ -91,14 +92,31 @@ Objectif : répondre "oui" aux 7 questions, avec une preuve pour chacune.
 ### Hugo
 - [x] Vraies prédictions de bout en bout, réponse en moins de 2 s (environ 20 ms)
 - [x] Explications affichées ("similaire à X et Y recrutés en 2023") et curseur budget / revente
-- [ ] README "run locally" testé par un autre membre sur une machine propre (à faire par un membre de l'équipe, Q6)
+- [x] README "run locally" testé par un autre membre sur une machine propre : Oscar, le 17/11, sous Windows, dossier vide, moins de 5 min (commit `638cf4a`)
 
 ## Semaine 4 : finalisation et showcase
 
-- [ ] Oscar : métriques finales, graphiques (loss, ablation), 3 études de cas clubs (club vendeur, gros club, petit budget)
-- [ ] Simon et Mathis : réentraînement avec les interactions loggées
-- [ ] Gautier et Hugo : scénario de démo, slides de pitch, flyer d'une page
-- [ ] Tous : gel du code deux jours avant le showcase, répétition du pitch
+Priorités issues du test de la semaine 3 (voir les issues GitHub).
+
+### Gautier et Mathis
+- [ ] Biais d'âge : correction dans le re-ranking (le top 10 a 28 à 30 ans en moyenne contre 24,5 pour les vraies recrues), suivi avec `age@10` et `value_change@10`
+- [ ] Biais de popularité : tester une pénalité pour les joueurs qui changent souvent de club
+
+### Hugo et Gautier
+- [ ] Explications des nouveaux talents : aujourd'hui elles affichent toutes les mêmes joueurs "similaires", elles doivent varier d'un joueur à l'autre
+
+### Simon et Mathis
+- [ ] Réentraînement avec les interactions loggées dans l'app
+
+### Oscar
+- [ ] Métriques finales et graphiques (loss, ablation) après les corrections, mise à jour de `eval/results/`
+- [ ] 3 études de cas clubs (club vendeur, gros club, petit budget) pour le pitch
+- [ ] Vérifier que le README tourne toujours sur une machine propre après les derniers merges
+
+### Tous
+- [ ] Scénario de démo, slides de pitch, flyer d'une page
+- [ ] Chacun relit et sait expliquer sa partie du code (le prof posera des questions techniques au showcase)
+- [ ] Gel du code deux jours avant le showcase, répétition du pitch
 
 ## Risques à surveiller
 
