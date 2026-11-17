@@ -30,6 +30,9 @@ def test_name_helpers():
     assert is_youth_or_reserve("Real Madrid Castilla")
     assert is_youth_or_reserve("FC Porto B")
     assert not is_youth_or_reserve("Club Brugge KV")
+    assert not is_youth_or_reserve("B. Leverkusen")
+    assert not is_youth_or_reserve("C. Rizespor")
+    assert not is_youth_or_reserve("B SAD")
     assert parent_name("FC Porto B") == parent_name("FC Porto")
 
 
@@ -77,6 +80,15 @@ def test_pseudo_clubs_youth_and_promotions_dropped():
         t(18, "2022-07-01", 515, 3, "Without Club", "Gamma FC", 0),  # free agent signing
     ])
     assert sorted(inter.player_id) == [17, 18]
+
+
+def test_first_team_with_reserve_like_name_kept():
+    clubs = pd.concat([CLUBS, pd.DataFrame({"club_id": [4], "name": ["Willem II"],
+                                            "domestic_competition_id": ["FR1"]})])
+    df = pd.DataFrame([t(30, "2022-07-01", 2, 4, "Beta FC", "Willem II", 1e6)], columns=COLS)
+    inter, _, _ = clean_transfers(df, clubs, leagues={"FR1": ""}, min_club_transfers=1,
+                                  today=date(2026, 7, 6))
+    assert list(inter.player_id) == [30]
 
 
 def test_future_and_duplicates_and_outside_league():

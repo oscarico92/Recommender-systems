@@ -39,10 +39,27 @@ A transfer is kept as an interaction only if it is a recruitment choice made by 
 
 The loans are detected on the full history, before the other filters, so that a loan to a club outside the selected leagues is still recognised.
 
+### Result on the snapshot of 6 July 2026
+
+| Step | Rows left |
+| --- | --- |
+| Raw transfers | 175,165 |
+| 1. Basic cleaning | 174,690 |
+| 2. Without returns from loan | 141,391 |
+| 3. Without pseudo clubs | 137,404 |
+| 4. Without youth, reserve and internal moves | 95,011 |
+| 5. Recruiting club in the 10 leagues | 26,398 |
+| 6. Clubs with at least 10 recruitments | **26,372** |
+
+Final dataset: 26,372 interactions, 322 clubs (median 85 recruitments per club), 9,880 players, from 1999-07-01 to 2026-09-03. 31% are loans, 20% free transfers, and the fee is unknown for 16%. From 2019 on there are about 2,000 to 3,000 recruitments per year.
+
+Manual check: the 2023 signings of Manchester United come out right (Mount, Onana and Højlund bought, Evans free, Sabitzer, Weghorst, Butland, Reguilón and Amrabat flagged as loans).
+
 ### Known limitations
 
 - **Loans are inferred.** In the public table, a loan, an end of loan and a free transfer all have `transfer_fee = 0`. A loan made permanent (option to buy) or a loan longer than 760 days is seen as a normal transfer. A player who leaves for free and comes back within two years is seen as a loan.
 - **The league of a club is its current one** (`clubs.domestic_competition_id`). A club relegated before the snapshot is not in the selection, even for its older seasons.
+- **A few transfers are dated after the snapshot** (3 rows, announced for the summer 2026 window). They stay in the data but fall in the test season.
 - **`transfer_fee` is null when unknown**, so `fee_eur` must not be read as 0 in that case.
 
 ## 3. New interactions (SQLite)
