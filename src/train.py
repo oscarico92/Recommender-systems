@@ -8,6 +8,7 @@ from the validation run, so the test targets are never looked at.
 """
 
 from dataclasses import asdict, dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,9 @@ from src.graph import Graph, build_graph
 from src.models.coldstart import ColdStartEncoder, encode, fit_encoder
 from src.models.lightgcn import ClubPlayerLightGCN
 from src.rerank import merge_with_cold_slots  # noqa: F401  (re-exported)
+
+if TYPE_CHECKING:
+    from src.feedback import FeedbackSignals
 
 
 @dataclass
@@ -34,6 +38,8 @@ class Config:
     patience: int = 6            # checks without improvement before stopping
     warm_mix: float = 0.0        # share of the encoder embedding for warm players
     cold_slots: int = 2          # places of the top 10 kept for never transferred players
+    loan_weight: float = 1.0     # sampling weight of loan recruitments
+    hard_negative_rate: float = 0.5  # share of negatives drawn from dismissed players, when any
     seed: int = 0
 
 
@@ -62,11 +68,47 @@ def _val_edges(setup: EvalSetup, graph: Graph, in_graph: np.ndarray, cat_to_node
     return torch.tensor(clubs, dtype=torch.long), torch.tensor(players, dtype=torch.long)
 
 
-def fit(setup: EvalSetup, features: pd.DataFrame, cfg: Config, monitor: bool = False, verbose: bool = True) -> Fitted:
+def _hard_negatives(feedback, graph: Graph, node_of: pd.Series) -> dict[int, np.ndarray]:
+    """Club index -> player nodes the club dismissed in the app."""
+    if feedback is None or feedback.negatives.empty:
+        return {}
+    club_pos = {c: i for i, c in enumerate(graph.club_ids)}
+    out: dict[int, list[int]] = {}
+    for c, p in zip(feedback.negatives["club_id"], feedback.negatives["player_id"]):
+        if c in club_pos and p in node_of.index:
+            out.setdefault(club_pos[c], []).append(int(node_of[p]))
+    return {c: np.array(v) for c, v in out.items()}
+
+
+def _swap_hard_negatives(neg, clubs, hard_neg, rate, rng):
+    neg = neg.clone()
+    for k, c in enumerate(clubs.tolist()):
+        if c in hard_neg and rng.random() < rate:
+            neg[k] = int(rng.choice(hard_neg[c]))
+    return neg
+
+
+def fit(
+    setup: EvalSetup,
+    features: pd.DataFrame,
+    cfg: Config,
+    monitor: bool = False,
+    verbose: bool = True,
+    feedback: "FeedbackSignals | None" = None,
+) -> Fitted:
+    """Train LightGCN and the encoder.
+
+    `feedback` (from src.feedback) adds the players shortlisted or signed in
+    the app as extra positive edges, and uses the dismissed ones as hard
+    negatives for their club.
+    """
     torch.manual_seed(cfg.seed)
     rng = np.random.default_rng(cfg.seed)
-    graph = build_graph(setup.history, setup.club_ids, setup.item_ids, setup.cutoff, cfg.years)
+    graph = build_graph(setup.history, setup.club_ids, setup.item_ids, setup.cutoff, cfg.years,
+                        loan_weight=cfg.loan_weight,
+                        extra_edges=feedback.positives if feedback is not None else None)
     node_of = pd.Series(np.arange(graph.n_players), index=graph.player_ids)
+    hard_neg = _hard_negatives(feedback, graph, node_of)
     cat_to_node = node_of.loc[setup.item_ids].to_numpy()
     degree = np.bincount(graph.pos_player.numpy(), minlength=graph.n_players)
     in_graph = degree[cat_to_node] > 0
@@ -74,17 +116,22 @@ def fit(setup: EvalSetup, features: pd.DataFrame, cfg: Config, monitor: bool = F
     model = ClubPlayerLightGCN(graph, cfg.dim, cfg.layers)
     opt = torch.optim.Adam(model.parameters(), lr=cfg.lr)
     n_edges = len(graph.pos_club)
+    weights = graph.pos_weight
+    weighted = weights is not None and bool((weights != weights[0]).any())
     if monitor:
         v_club, v_pos = _val_edges(setup, graph, in_graph, cat_to_node)
 
     log, best, best_state, best_epoch, bad = [], -1.0, None, cfg.epochs, 0
     for epoch in range(1, cfg.epochs + 1):
         model.train()
-        perm = torch.randperm(n_edges)
+        # weighted edges (loans, feedback) are drawn in proportion to their weight
+        perm = torch.multinomial(weights, n_edges, replacement=True) if weighted else torch.randperm(n_edges)
         total = 0.0
         for i in range(0, n_edges, cfg.batch):
             b = perm[i: i + cfg.batch]
             neg = torch.from_numpy(rng.integers(0, graph.n_players, len(b)))
+            if hard_neg:
+                neg = _swap_hard_negatives(neg, graph.pos_club[b], hard_neg, cfg.hard_negative_rate, rng)
             loss = model.bpr_loss(graph.edge_index, graph.pos_club[b], graph.pos_player[b], neg, cfg.reg)
             opt.zero_grad()
             loss.backward()
