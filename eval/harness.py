@@ -14,6 +14,7 @@ Metrics
   club's budget (90th percentile of the values it recruited in 3 years)
 - value_change@10: mean log change of the market value of the top 10 in
   the year after the cutoff. Uses future valuations, for evaluation only.
+- age@10: mean age of the top 10 at the cutoff
 """
 
 from dataclasses import dataclass, field
@@ -41,6 +42,7 @@ class EvalSetup:
     future_change: np.ndarray            # (N,) log value change after the cutoff
     target_coverage: float               # share of targets that are in the catalogue
     n_targets: int = field(default=0)
+    item_age: np.ndarray | None = None   # (N,) age at the cutoff
 
     @property
     def club_index(self) -> dict[int, int]:
@@ -112,6 +114,7 @@ def build_setup(
         future_change=future_change,
         target_coverage=n_in_cat / max(n_targets, 1),
         n_targets=n_targets,
+        item_age=features["age"].to_numpy(float),
     )
 
 
@@ -163,5 +166,16 @@ def evaluate(setup: EvalSetup, scores: np.ndarray, ranked: np.ndarray | None = N
         "coverage@10": float(len(np.unique(top10)) / len(setup.item_ids)),
         "within_budget@10": float(within.mean()),
         "value_change@10": float(setup.future_change[top10].mean()),
+        "age@10": float(setup.item_age[top10].mean()) if setup.item_age is not None else float("nan"),
         "n_clubs_evaluated": len(ndcg),
+    }
+
+
+def target_reference(setup: EvalSetup) -> dict:
+    """Mean age and value change of the players actually signed (in the catalogue)."""
+    idx = np.concatenate([t for t in setup.targets if len(t)])
+    return {
+        "value_change": float(setup.future_change[idx].mean()),
+        "age": float(setup.item_age[idx].mean()) if setup.item_age is not None else float("nan"),
+        "n": int(len(idx)),
     }

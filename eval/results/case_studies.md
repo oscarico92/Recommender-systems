@@ -17,7 +17,7 @@ A star marks a player the club actually signed after the cutoff. 'new' marks a p
 | 9 | Davide Zappacosta | Midfield | 33 | Atalanta BC | 5.0 | -0.18 |  |
 | 10 | Tiemoué Bakayoko | Midfield | 31 | PAOK Thessaloniki | 1.0 | -0.69 |  |
 
-New talents (unknown to the graph): Jan Oblak (Atlético de Madrid, 32), Myles Lewis-Skelly (Arsenal FC, 19), Marquinhos (Paris Saint-Germain, 31), Marc-André ter Stegen (FC Barcelona, 33), Ethan Nwaneri (Arsenal FC, 18)
+New talents (unknown to the graph): Myles Lewis-Skelly (Arsenal FC, 19), Jan Oblak (Atlético de Madrid, 32), Marquinhos (Paris Saint-Germain, 31), Ethan Nwaneri (Arsenal FC, 18), Marc-André ter Stegen (FC Barcelona, 33)
 
 Actual signings in the catalogue: Diego León, Senne Lammens, Bryan Mbeumo, Matheus Cunha, Benjamin Sesko
 
@@ -36,7 +36,7 @@ Actual signings in the catalogue: Diego León, Senne Lammens, Bryan Mbeumo, Math
 | 9 | Valentin Rosier | Defender | 29 | CD Leganés | 3.0 | -0.29 |  |
 | 10 | Sergio Gómez | Defender | 25 | Real Sociedad | 20.0 | +0.69 |  |
 
-New talents (unknown to the graph): Marquinhos (Paris Saint-Germain, 31), Wanderson (Cruzeiro Esporte Clube, 31), Renato Kayzer (Esporte Clube Vitória, 29), João Simões (Sporting CP, 18), Roger Fernandes (SC Braga, 20)
+New talents (unknown to the graph): Marquinhos (Paris Saint-Germain, 31), Wanderson (Cruzeiro Esporte Clube, 31), Pedro Rocha (Clube do Remo (PA), 31), Renato Kayzer (Esporte Clube Vitória, 29), Presnel Kimpembe (Paris Saint-Germain, 30)
 
 Actual signings in the catalogue: Richard Ríos, Sidny Lopes Cabral, Franjo Ivanović, Rafa Obrador, Amar Dedić, Georgiy Sudakov, Dodi Lukébakio, Enzo Barrenechea
 
@@ -55,7 +55,7 @@ Actual signings in the catalogue: Richard Ríos, Sidny Lopes Cabral, Franjo Ivan
 | 9 | Kieffer Moore | Attack | 33 | Sheffield United | 1.0 | -0.69 |  |
 | 10 | Andros Townsend | Attack | 34 | Antalyaspor | 0.6 | -1.19 |  |
 
-New talents (unknown to the graph): Adam Smith (AFC Bournemouth, 34), Ben Cabango (Swansea City, 25), Jamaal Lascelles (Newcastle United, 32), Andre Green (Rotherham United, 27), Tyrhys Dolan (Blackburn Rovers, 24)
+New talents (unknown to the graph): Adam Smith (AFC Bournemouth, 34), Jamaal Lascelles (Newcastle United, 32), Ben Cabango (Swansea City, 25), Andre Green (Rotherham United, 27), Tyrhys Dolan (Blackburn Rovers, 24)
 
 Actual signings in the catalogue: Sebastian Tounekti, Kieran Tierney, Alex Oxlade-Chamberlain, Junior Adamu, Tomas Cvancara, Kelechi Iheanacho, Ross Doohan, Joel Mvuka, Benjamin Nygren, Shin Yamada, Hayato Inamura, Michel-Ange Balikwisha
 
