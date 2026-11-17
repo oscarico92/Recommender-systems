@@ -59,13 +59,22 @@ def recommend(
 ) -> dict:
     rec = get_recommender()
     start = time.perf_counter()
-    # players the club dismissed in the app are hidden at once, before any retraining
-    dismissed = {r[0] for r in conn.execute(
-        "SELECT player_id FROM interactions WHERE club_id = ? AND action = 'dismissed'", (club_id,))}
+    # feedback of the club in the app, used at once (no retraining needed):
+    # the last action on each player counts. Shortlisted, signed and dismissed
+    # players are hidden, and the club vector moves toward the liked ones and
+    # away from the dismissed ones (Recommender.club_query).
+    last = {}
+    for player_id, action in conn.execute(
+        "SELECT player_id, action FROM interactions WHERE club_id = ? AND action != 'viewed' ORDER BY id",
+        (club_id,),
+    ):
+        last[player_id] = action
+    liked = {p for p, a in last.items() if a in ("shortlisted", "signed")}
+    disliked = {p for p, a in last.items() if a == "dismissed"}
     try:
         items = rec.recommend(club_id, k=k, budget=budget_eur, resale_weight=resale_weight,
                               cold_slots=cold_slots, position=position, only_new=new_talents,
-                              exclude_ids=dismissed)
+                              exclude_ids=liked | disliked, liked_ids=liked, disliked_ids=disliked)
     except KeyError:
         raise HTTPException(404, f"Unknown club_id {club_id}. See /clubs.")
     club = rec.clubs[rec.clubs["club_id"] == club_id].iloc[0]
@@ -75,5 +84,6 @@ def recommend(
         "budget_eur": budget_eur if budget_eur is not None else float(club["budget_eur"]),
         "model_version": rec.config.get("model_version"),
         "latency_ms": round((time.perf_counter() - start) * 1000, 1),
+        "feedback": {"liked": len(liked), "dismissed": len(disliked)},
         "recommendations": items,
     }

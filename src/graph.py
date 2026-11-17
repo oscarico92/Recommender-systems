@@ -19,7 +19,7 @@ class Graph:
     edge_index: torch.Tensor    # (2, 2E) undirected, global node ids
     pos_club: torch.Tensor      # (E,) club index
     pos_player: torch.Tensor    # (E,) player index (0..P-1)
-    pos_weight: torch.Tensor | None = None   # (E,) sampling weight of each positive edge
+    pos_weight: torch.Tensor | None = None   # (E,) weight of each positive edge in the BPR loss
 
     @property
     def n_clubs(self) -> int:
@@ -45,9 +45,13 @@ def build_graph(
 ) -> Graph:
     """Graph of the recruitments before `cutoff`, optionally only the last `years`.
 
-    loan_weight: sampling weight of loan recruitments (1 = same as a transfer).
+    loan_weight: weight of loan recruitments in the BPR loss (1 = same as a transfer).
     extra_edges: (club_id, player_id, weight) added to the graph, e.g. the
     players shortlisted or signed in the app (see src/feedback.py).
+
+    The weights only scale the loss. In the LightGCN propagation every edge,
+    weighted or not, is a full neighbour (LGConv also accepts an edge_weight
+    if the weight should be used there too).
     """
     h = history
     if years is not None:
