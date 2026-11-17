@@ -41,9 +41,18 @@ METRICS = ["ndcg@10", "recall@20", "cold_ndcg@10", "warm_ndcg@10", "coverage@10"
 CASE_CLUBS = {985: "Manchester United", 294: "Benfica", 371: "Celtic"}
 
 
-def reranked(fitted, setup: EvalSetup, feats: pd.DataFrame, resale_weight: float, use_budget: bool = True):
+def player_moves(setup: EvalSetup) -> np.ndarray:
+    """Number of moves of each catalogue player between the selected clubs before the cutoff."""
+    counts = setup.history.groupby("player_id").size()
+    return counts.reindex(setup.item_ids).fillna(0).to_numpy(float)
+
+
+def reranked(fitted, setup: EvalSetup, feats: pd.DataFrame, resale_weight: float, use_budget: bool = True,
+             age_weight: float = 0.0, mobility_weight: float = 0.0):
     value = feats["value_eur"].to_numpy(float)
     trend = feats["value_trend"].to_numpy(float)
+    extra = dict(age=feats["age"].to_numpy(float), age_weight=age_weight,
+                 moves=player_moves(setup), mobility_weight=mobility_weight)
     s_warm = fitted.club_emb @ item_embeddings(fitted, "hybrid").T
     s_cold = fitted.club_emb @ fitted.item_emb_enc.T
     s_warm[:, ~fitted.in_graph] = -np.inf
@@ -52,9 +61,23 @@ def reranked(fitted, setup: EvalSetup, feats: pd.DataFrame, resale_weight: float
     warm_rank, cold_rank = [], []
     for i in range(len(setup.club_ids)):
         budget = setup.club_budget[i] if use_budget else None
-        warm_rank.append(rerank_group(s_warm[i], value, trend, budget, resale_weight, 20))
-        cold_rank.append(rerank_group(s_cold[i], value, trend, budget, resale_weight, 20))
+        warm_rank.append(rerank_group(s_warm[i], value, trend, budget, resale_weight, 20, **extra))
+        cold_rank.append(rerank_group(s_cold[i], value, trend, budget, resale_weight, 20, **extra))
     return merge_with_cold_slots(np.array(warm_rank), np.array(cold_rank), fitted.config.cold_slots)
+
+
+def _tuned_rerank() -> dict:
+    """Re-ranking weights chosen on the validation season by src/tune.py (defaults if absent)."""
+    path = RESULTS_DIR / "best_rerank.json"
+    if path.exists():
+        with open(path) as f:
+            return json.load(f)
+    return {"resale_weight": 0.5, "age_weight": 0.0, "mobility_weight": 0.0}
+
+
+def _tuned_label() -> str:
+    w = _tuned_rerank()
+    return f"(resale {w['resale_weight']}, age {w['age_weight']}, mobility {w['mobility_weight']})"
 
 
 def replace_slots(fi, n):
@@ -119,6 +142,15 @@ def main() -> int:
         "LightGCN + budget re-ranking": lambda fi: reranked(replace_slots(fi, 0), setup, feats, 0.0),
         "LightGCN + budget + resale (w=0.5)": lambda fi: reranked(replace_slots(fi, 0), setup, feats, 0.5),
         "LightGCN + budget + resale (w=1.0)": lambda fi: reranked(replace_slots(fi, 0), setup, feats, 1.0),
+        # week 4: age and mobility corrections (weights chosen on validation, see src/tune.py)
+        "LightGCN + budget + resale 0.5 + age (w=0.5)":
+            lambda fi: reranked(replace_slots(fi, 0), setup, feats, 0.5, age_weight=0.5),
+        "LightGCN + budget + resale 0.5 + age (w=1.0)":
+            lambda fi: reranked(replace_slots(fi, 0), setup, feats, 0.5, age_weight=1.0),
+        "LightGCN + budget + resale 0.5 + mobility (w=0.5)":
+            lambda fi: reranked(replace_slots(fi, 0), setup, feats, 0.5, mobility_weight=0.5),
+        f"LightGCN + budget + tuned re-ranking {_tuned_label()}":
+            lambda fi: reranked(replace_slots(fi, 0), setup, feats, **_tuned_rerank()),
     }
     # "New talents" list: only players unknown to the graph at the cutoff
     cold_rows: dict[str, list[dict]] = {

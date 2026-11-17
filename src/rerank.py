@@ -3,8 +3,17 @@
 For one club and one group of players (warm or cold):
 1. take the `n_candidates` best players by model score
 2. drop the players whose market value is above the club's budget
-3. re-score: z(model score) + resale_weight * z(value trend over the last
-   12 months, known at the cutoff), and sort
+3. re-score and sort:
+       z(model score)
+     + resale_weight   * z(value trend over the last 12 months, known at the cutoff)
+     - age_weight      * z(age at the cutoff)
+     - mobility_weight * z(log(1 + number of past moves between the selected clubs))
+
+The age term corrects the age bias of the model (its top 10 is about 29
+years old on the test season, the players actually signed are 24.5). The
+mobility term pushes down the players that change club very often, who are
+recommended to many clubs because they are central in the graph.
+All z-scores are computed on the candidates left after the budget filter.
 """
 
 import numpy as np
@@ -25,6 +34,10 @@ def rerank_group(
     resale_weight: float,
     length: int,
     n_candidates: int = N_CANDIDATES,
+    age: np.ndarray | None = None,
+    age_weight: float = 0.0,
+    moves: np.ndarray | None = None,
+    mobility_weight: float = 0.0,
 ) -> np.ndarray:
     """Indices of the best `length` players after re-ranking.
 
@@ -43,6 +56,10 @@ def rerank_group(
         ok, rest = cand, cand[:0]
     if len(ok):
         new = _z(scores[ok]) + resale_weight * _z(trend[ok])
+        if age is not None and age_weight:
+            new -= age_weight * _z(age[ok])
+        if moves is not None and mobility_weight:
+            new -= mobility_weight * _z(np.log1p(moves[ok]))
         ok = ok[np.argsort(-new, kind="stable")]
     out = np.concatenate([ok, rest])[:length]
     if len(out) < length:  # very small candidate set: pad with the next players
