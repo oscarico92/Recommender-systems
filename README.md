@@ -102,17 +102,19 @@ The player features (`src/features.py`) are built automatically at each cutoff a
 
 ## Results (test season 2025/26)
 
-Full tables: [eval/results/test_results.md](eval/results/test_results.md). Mean over 3 seeds, 322 clubs, 17,628 candidate players, 2,993 target recruitments.
+Full tables: [eval/results/test_results.md](eval/results/test_results.md). Mean ± standard deviation over 3 seeds, 322 clubs, 17,628 candidate players, 2,993 target recruitments.
 
-| Model | NDCG@10 | Recall@20 | Within budget | Value change of top 10 |
-| --- | --- | --- | --- | --- |
-| Random | 0.0004 | 0.0016 | 78% | +0.07 |
-| Most popular | 0.0018 | 0.0026 | 80% | -0.46 |
-| Highest market value | 0.0003 | 0.0009 | 0% | -0.17 |
-| LightGCN alone | 0.0098 | 0.0173 | 76% | -0.21 |
-| Feature encoder alone | 0.0097 | 0.0197 | 81% | -0.23 |
-| LightGCN + budget re-ranking | 0.0108 | 0.0238 | 98% | -0.20 |
-| **LightGCN + budget + resale (w=1)** | **0.0125** | **0.0239** | **98%** | **-0.11** |
+| Model | NDCG@10 | Recall@20 | Within budget | Value change of top 10 | Mean age of top 10 |
+| --- | --- | --- | --- | --- | --- |
+| Random | 0.0004 | 0.0016 | 78% | +0.07 | 25.7 |
+| Most popular (all history) | 0.0018 | 0.0026 | 80% | -0.46 | 33.1 |
+| Most popular (last 2 seasons) | 0.0017 | 0.0038 | 41% | -0.06 | 24.6 |
+| Highest market value | 0.0003 | 0.0009 | 0% | -0.17 | 23.4 |
+| LightGCN alone | 0.0098 ± 0.0014 | 0.0173 ± 0.0036 | 76% | -0.21 | 29.1 |
+| Feature encoder alone | 0.0092 ± 0.0011 | 0.0179 ± 0.0027 | 81% | -0.24 | 30.0 |
+| LightGCN + budget re-ranking | 0.0108 ± 0.0017 | 0.0238 ± 0.0037 | **98%** | -0.20 | 29.5 |
+| LightGCN + budget + resale (w=1) | 0.0125 ± 0.0027 | 0.0239 ± 0.0008 | **98%** | -0.11 | 28.4 |
+| *Players actually signed* | | | | *+0.19* | *24.5* |
 
 New talents list (players unknown to the graph, 60% of the catalogue):
 
@@ -120,16 +122,18 @@ New talents list (players unknown to the graph, 60% of the catalogue):
 | --- | --- |
 | Random | 0.0006 |
 | Highest market value | 0.0067 |
-| **Cold-start encoder** | **0.0312** |
+| **Cold-start encoder** | **0.0303 ± 0.0021** |
 
 What it shows:
 
-- LightGCN is 5 times better than the most popular ranking, and recommends 70 times more distinct players (coverage 5.7% against 0.08%), so it does not just push the same famous names.
-- The budget re-ranking keeps 98% of the recommendations affordable and also improves accuracy, because clubs mostly sign players they can afford. The resale bonus raises NDCG@10 again and halves the value loss of the recommended players.
-- The cold-start encoder finds new talents 5 times better than "highest market value" and 50 times better than random.
+- **Beats the sanity floor.** LightGCN reaches 5 times the NDCG@10 of both most popular rankings (all history or last 2 seasons), with clearly separated standard deviations, and recommends 70 times more distinct players (coverage 5.7% against 0.08%).
+- **Budget compliance.** The budget re-ranking raises the share of affordable players from 76% to 98%.
+- **Cold start.** The encoder finds new talents 4.5 times better than "highest market value" and 50 times better than random.
+- **What is not shown.** The NDCG@10 differences between the LightGCN variants (0.0098 to 0.0125) are within one standard deviation over 3 seeds, so we do not claim that the re-ranking improves accuracy, only that it does not hurt it.
+- **Value change.** Every model list loses value in the following year (-0.11 to -0.24), while random gains (+0.07) and the players actually signed gain more (+0.19). The reason is age: the top 10 of the models average 28 to 30 years, against 24.5 for the real signings and 25.8 for the catalogue. LightGCN learns from experienced players who changed clubs many times, and older players lose value. The resale bonus reduces the loss (-0.21 to -0.11, about 0.7 year younger) but does not remove it.
 - Absolute values are low because each club signs about 10 players among 17,628 candidates: a random ranking scores 0.0004.
 
-Known limits, to work on in week 4: a popularity bias toward players who often change clubs (the same experienced forwards appear for several clubs, see [case studies](eval/results/case_studies.md)), and new talents lists that include established stars who simply have not moved in 10 years. Training curves: [docs/figures/loss_curves.png](docs/figures/loss_curves.png).
+Known limits, to work on in week 4: the age and popularity bias above (the same experienced forwards appear for several clubs, see [case studies](eval/results/case_studies.md)), and new talents lists that include established stars who simply have not moved in 10 years. Training curves: [docs/figures/loss_curves.png](docs/figures/loss_curves.png).
 
 ## Repository structure
 

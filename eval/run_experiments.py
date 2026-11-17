@@ -22,8 +22,13 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from eval.baselines import market_value_scores, most_popular_scores, random_scores  # noqa: E402
-from eval.harness import EvalSetup, build_setup, evaluate, mask_scores  # noqa: E402
+from eval.baselines import (  # noqa: E402
+    market_value_scores,
+    most_popular_scores,
+    random_scores,
+    recent_popular_scores,
+)
+from eval.harness import EvalSetup, build_setup, evaluate, mask_scores, target_reference  # noqa: E402
 from src.config import FIGURES_DIR, RESULTS_DIR, TEST_START  # noqa: E402
 from src.features import _raw, load_or_build  # noqa: E402
 from src.rerank import merge_with_cold_slots, rerank_group  # noqa: E402
@@ -32,7 +37,7 @@ from src.train import Config, fit, item_embeddings, ranking  # noqa: E402
 
 SEEDS = [0, 1, 2]
 METRICS = ["ndcg@10", "recall@20", "cold_ndcg@10", "warm_ndcg@10", "coverage@10",
-           "within_budget@10", "value_change@10"]
+           "within_budget@10", "value_change@10", "age@10"]
 CASE_CLUBS = {985: "Manchester United", 294: "Benfica", 371: "Celtic"}
 
 
@@ -63,7 +68,8 @@ def new_talents(setup: EvalSetup, scores: np.ndarray) -> dict:
     s[:, setup.is_warm] = -np.inf
     m = evaluate(setup, s)
     return {"ndcg@10": m["cold_ndcg@10"], "coverage@10": m["coverage@10"],
-            "within_budget@10": m["within_budget@10"], "value_change@10": m["value_change@10"]}
+            "within_budget@10": m["within_budget@10"], "value_change@10": m["value_change@10"],
+            "age@10": m["age@10"]}
 
 
 def summarise(rows: dict[str, list[dict]], metrics: list[str]) -> pd.DataFrame:
@@ -102,7 +108,8 @@ def main() -> int:
 
     rows: dict[str, list[dict]] = {}
     rows["Random"] = [evaluate(setup, random_scores(setup, s)) for s in SEEDS]
-    rows["Most popular"] = [evaluate(setup, most_popular_scores(setup, s)) for s in SEEDS]
+    rows["Most popular (all history)"] = [evaluate(setup, most_popular_scores(setup, s)) for s in SEEDS]
+    rows["Most popular (last 2 seasons)"] = [evaluate(setup, recent_popular_scores(setup, 2, s)) for s in SEEDS]
     rows["Highest market value"] = [evaluate(setup, market_value_scores(setup))]
 
     variants = {
@@ -130,7 +137,8 @@ def main() -> int:
         print(f"seed {seed} done", flush=True)
 
     table = summarise(rows, METRICS)
-    cold_metrics = ["ndcg@10", "coverage@10", "within_budget@10", "value_change@10"]
+    ref = target_reference(setup)
+    cold_metrics = ["ndcg@10", "coverage@10", "within_budget@10", "value_change@10", "age@10"]
     cold_table = summarise(cold_rows, cold_metrics)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     table.to_csv(RESULTS_DIR / "test_results.csv", index=False)
@@ -147,6 +155,11 @@ def main() -> int:
         "## Main list (all players)",
         "",
         *markdown(table, METRICS),
+        "",
+        f"Reference, players actually signed after the cutoff ({ref['n']} in the catalogue): "
+        f"mean age {ref['age']:.1f}, mean value change {ref['value_change']:+.3f}. "
+        f"The whole catalogue: mean age {setup.item_age.mean():.1f}, "
+        f"mean value change {setup.future_change.mean():+.3f}.",
         "",
         "## New talents list (only players unknown to the graph at the cutoff)",
         "",
