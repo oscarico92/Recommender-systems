@@ -33,30 +33,30 @@ Objectif : répondre "oui" aux 5 questions du status report.
 - Q5 Planning : en avance, à l'heure ou en retard ?
 
 ### Oscar (Project Lead)
-- [ ] Créer l'arborescence du repo (`data/`, `src/`, `eval/`, `api/`, `app/`, `docs/`) et le `requirements.txt` de départ
-- [ ] Script de split temporel par saison (train, validation, test)
-- [ ] Harness d'évaluation : NDCG@10 et Recall@20, testé sur des prédictions bidon
-- [ ] Baselines aléatoire et "plus populaire"
+- [x] Créer l'arborescence du repo (`data/`, `src/`, `eval/`, `api/`, `app/`, `docs/`) et le `requirements.txt` de départ
+- [x] Script de split temporel par saison (train, validation, test) : `src/split.py`
+- [x] Harness d'évaluation : NDCG@10 et Recall@20, testé : `eval/harness.py`
+- [x] Baselines aléatoire et "plus populaire" (plus "plus grosse valeur marchande") : `eval/baselines.py`
 - [ ] Rédiger le status report S2
 
 ### Simon (Data Engineer)
-- [ ] `src/download_data.py` : téléchargement de l'archive Transfermarkt
-- [ ] Nettoyage des transferts : retirer retours de prêt, fins de carrière, transferts vers l'équipe réserve ; marquer les prêts
-- [ ] Sélection d'une dizaine de championnats bien couverts et des clubs avec au moins 10 transferts
-- [ ] Schéma SQLite de la table `interactions` (club, joueur, action, timestamp)
-- [ ] Première version de l'endpoint `/log_interaction`
+- [x] `src/download_data.py` : téléchargement de l'archive Transfermarkt
+- [x] Nettoyage des transferts : retirer retours de prêt, fins de carrière, transferts vers l'équipe réserve ; marquer les prêts (`src/clean_transfers.py`, chiffres dans `data/README.md`)
+- [x] Sélection d'une dizaine de championnats bien couverts et des clubs avec au moins 10 transferts : 26 369 interactions, 322 clubs, 9 877 joueurs
+- [x] Schéma SQLite de la table `interactions` (club, joueur, action, timestamp) : `src/db.py`
+- [x] Première version de l'endpoint `/log_interaction` : `api/interactions.py`, testée
 
 ### Gautier (Lead ML Engineer)
-- [ ] Construction du graphe biparti club / joueur dans PyTorch Geometric à partir des transferts d'entraînement
-- [ ] Squelette LightGCN (`LGConv`), un forward pass sur le vrai graphe
+- [x] Construction du graphe biparti club / joueur dans PyTorch Geometric à partir des transferts d'entraînement : `src/graph.py`
+- [x] LightGCN (PyG) entraîné sur le vrai graphe : `src/models/lightgcn.py`
 
 ### Mathis (ML Engineer Ops)
-- [ ] Boucle d'entraînement BPR avec échantillonnage négatif
-- [ ] Log de la loss train et validation à chaque epoch, sauvegarde des checkpoints
+- [x] Boucle d'entraînement BPR avec échantillonnage négatif : `src/train.py`
+- [x] Log de la loss train et validation, early stopping, modèle exporté dans `models/serving/`
 
 ### Hugo (Systems Engineer)
-- [ ] API FastAPI avec `/recommend` qui renvoie des recommandations bidon
-- [ ] Page Streamlit qui choisit un club et appelle l'API
+- [x] API FastAPI avec `/recommend` (vraies recommandations) et `/clubs` : `api/main.py`
+- [x] Page Streamlit qui choisit un club et appelle l'API : `app/streamlit_app.py`
 
 ## Semaine 3 : intégration et premiers résultats
 
@@ -71,27 +71,27 @@ Objectif : répondre "oui" aux 7 questions, avec une preuve pour chacune.
 - Q7 Planning : où on en est, ce qu'il reste avant le showcase ?
 
 ### Oscar
-- [ ] Tableau de résultats complet : baselines, LightGCN, cold-start, ablation
-- [ ] Audit anti-fuite (dates des features, des valeurs marchandes, du graphe)
-- [ ] Rédiger le status report S3 avec les preuves
+- [x] Tableau de résultats complet : baselines, LightGCN, cold-start, ablation : `eval/results/test_results.md`
+- [x] Audit anti-fuite (dates des features, des valeurs marchandes, du graphe) : `docs/week3_evidence.md`, `tests/test_features_leakage.py`
+- [ ] Rédiger le status report S3 avec les preuves (base : `docs/week3_evidence.md`)
 
 ### Simon
-- [ ] Table des features joueurs (stats et valeurs marchandes calculées avant la date de split)
-- [ ] `/log_interaction` branché sur la base, vérifié de bout en bout
+- [x] Table des features joueurs (stats et valeurs marchandes calculées avant la date de split) : `src/features.py`
+- [x] `/log_interaction` branché sur la base, vérifié de bout en bout (clic Streamlit vers SQLite)
 
 ### Gautier
-- [ ] Encodeur cold-start (MLP features vers embeddings LightGCN) entraîné
-- [ ] Évaluation sur les joueurs jamais transférés avant le split
+- [x] Encodeur cold-start (MLP features vers embeddings LightGCN) entraîné : `src/models/coldstart.py`
+- [x] Évaluation sur les joueurs inconnus du graphe avant le split (liste "nouveaux talents")
 
 ### Mathis
-- [ ] Recherche d'hyperparamètres sur la validation (nombre de couches, taille d'embedding, learning rate)
-- [ ] Fonction `predict()` avec re-ranking budget et revente
-- [ ] Courbes de loss train / validation
+- [x] Recherche d'hyperparamètres sur la validation : `src/tune.py`, `eval/results/tuning.csv`
+- [x] Fonction `predict()` avec re-ranking budget et revente : `src/predict.py`, `src/rerank.py`
+- [x] Courbes de loss train / validation : `docs/figures/loss_curves.png`
 
 ### Hugo
-- [ ] Vraies prédictions de bout en bout, réponse en moins de 2 s
-- [ ] Explications affichées ("similaire à X et Y recrutés en 2023") et curseur budget / revente
-- [ ] README "run locally" testé par un autre membre sur une machine propre
+- [x] Vraies prédictions de bout en bout, réponse en moins de 2 s (environ 20 ms)
+- [x] Explications affichées ("similaire à X et Y recrutés en 2023") et curseur budget / revente
+- [ ] README "run locally" testé par un autre membre sur une machine propre (à faire par un membre de l'équipe, Q6)
 
 ## Semaine 4 : finalisation et showcase
 

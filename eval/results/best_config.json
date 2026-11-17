@@ -1,0 +1,14 @@
+{
+  "dim": 64,
+  "layers": 2,
+  "lr": 0.005,
+  "reg": 0.0001,
+  "years": 10,
+  "epochs": 35,
+  "batch": 2048,
+  "eval_every": 5,
+  "patience": 6,
+  "warm_mix": 0.0,
+  "cold_slots": 0,
+  "seed": 0
+}
