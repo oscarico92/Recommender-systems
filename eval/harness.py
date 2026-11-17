@@ -7,7 +7,7 @@ of the ranking with the recruitments made after the cutoff.
 
 Metrics
 - ndcg@10, recall@20: accuracy on all target recruitments
-- cold_ndcg@10: only targets never transferred before the cutoff (cold start)
+- cold_ndcg@10: only targets unknown to the training graph (cold start)
 - warm_ndcg@10: only targets already seen in the training graph
 - coverage@10: share of the catalogue recommended to at least one club
 - within_budget@10: share of the top 10 whose market value is within the

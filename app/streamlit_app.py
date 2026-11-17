@@ -52,24 +52,30 @@ with st.sidebar:
                          help="Defaults to what the club usually pays (90th percentile, last 3 years).")
     resale = st.slider("Resale focus", 0.0, 2.0, 0.5, 0.1,
                        help="Favours players whose market value went up in the last 12 months.")
-    cold = st.slider("Places for never transferred players", 0, 3, 2)
+    cold = st.slider("Places for new talents in the main list", 0, 3, 0,
+                     help="0 gives the most accurate list. The new talents are also shown below.")
     position = st.selectbox("Position", ["All", "Goalkeeper", "Defender", "Midfield", "Attack"])
     k = st.slider("Number of players", 5, 20, 10)
 
 params = {"club_id": club_id, "k": k, "budget_eur": budget_m * 1e6, "resale_weight": resale, "cold_slots": cold}
 if position != "All":
     params["position"] = position
-resp = requests.get(f"{API}/recommend", params=params, timeout=10)
-if resp.status_code != 200:
-    st.error(resp.json().get("detail", resp.text))
-    st.stop()
-data = resp.json()
 
-st.subheader(f"Recommended for {data['club_name']}")
-st.caption(f"Model {data['model_version']}, answered in {data['latency_ms']} ms. "
-           f"Budget {data['budget_eur'] / 1e6:.1f} M EUR per player.")
 
-for rec in data["recommendations"]:
+def fetch(extra: dict) -> dict:
+    resp = requests.get(f"{API}/recommend", params={**params, **extra}, timeout=10)
+    if resp.status_code != 200:
+        st.error(resp.json().get("detail", resp.text))
+        st.stop()
+    return resp.json()
+
+
+def show(data: dict, section: str) -> None:
+    for rec in data["recommendations"]:
+        card(rec, data, section)
+
+
+def card(rec: dict, data: dict, section: str) -> None:
     with st.container(border=True):
         left, mid, right = st.columns([4, 3, 2])
         tag = "  `new talent`" if rec["never_transferred"] else ""
@@ -82,10 +88,21 @@ for rec in data["recommendations"]:
         if rec["similar_to"]:
             sims = ", ".join(f"{s['name']} ({s['year']})" for s in rec["similar_to"])
             left.caption(f"Similar to your signings: {sims}")
-        if right.button("Shortlist", key=f"s{rec['player_id']}"):
+        if right.button("Shortlist", key=f"{section}s{rec['player_id']}"):
             log(club_id, rec["player_id"], "shortlisted", rec["rank"], data["model_version"])
-        if right.button("Dismiss", key=f"d{rec['player_id']}"):
+        if right.button("Dismiss", key=f"{section}d{rec['player_id']}"):
             log(club_id, rec["player_id"], "dismissed", rec["rank"], data["model_version"])
+
+
+data = fetch({})
+st.subheader(f"Recommended for {data['club_name']}")
+st.caption(f"Model {data['model_version']}, answered in {data['latency_ms']} ms. "
+           f"Budget {data['budget_eur'] / 1e6:.1f} M EUR per player.")
+show(data, "main")
+
+st.subheader("New talents")
+st.caption("Players with no recruitment by a club of our 10 leagues in the last 10 years, so unknown to the graph model. Ranked from their profile and stats by the cold-start encoder.")
+show(fetch({"k": 5, "new_talents": "true"}), "new")
 
 with st.expander("Shortlist and actions saved for this club"):
     r = requests.get(f"{API}/interactions", params={"club_id": club_id}, timeout=5)

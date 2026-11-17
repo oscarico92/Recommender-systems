@@ -68,14 +68,20 @@ class Recommender:
         resale_weight: float = 0.0,
         cold_slots: int | None = None,
         position: str | None = None,
+        only_new: bool = False,
     ) -> list[dict]:
+        """Top k players for a club.
+
+        only_new=True gives the "new talents" list: only players never
+        transferred before the model's cutoff, ranked by the cold-start encoder.
+        """
         if club_id not in self._club_pos:
             raise KeyError(f"unknown club_id {club_id}")
         ci = self._club_pos[club_id]
         club = self.clubs.iloc[ci]
         if budget is None:
             budget = float(club["budget_eur"])
-        cold_slots = self.config.get("cold_slots", 2) if cold_slots is None else cold_slots
+        cold_slots = self.config.get("cold_slots", 0) if cold_slots is None else cold_slots
         length = max(k, 10)
 
         c = self.club_emb[ci]
@@ -88,9 +94,14 @@ class Recommender:
         s_cold = np.where(~self.in_graph & ~banned, self.cold_emb @ c, -np.inf)
         warm = rerank_group(s_warm, self._value, self._trend, budget, resale_weight, length)
         cold = rerank_group(s_cold, self._value, self._trend, budget, resale_weight, length)
-        ranked = merge_with_cold_slots(warm[None, :], cold[None, :], cold_slots, length)[0][:k]
+        if only_new:
+            ranked = cold[:k]
+        else:
+            ranked = merge_with_cold_slots(warm[None, :], cold[None, :], cold_slots, length)[0][:k]
 
-        recent = past.sort_values("transfer_date", ascending=False).head(40)
+        five_years = past["transfer_date"].max() - pd.Timedelta(days=5 * 365) if len(past) else None
+        recent = past[past["transfer_date"] >= five_years] if len(past) else past
+        recent = recent.sort_values("transfer_date", ascending=False).head(40)
         recent = recent[recent["player_id"].isin(self._graph_pos.keys())]
         out = []
         for rank, j in enumerate(ranked, start=1):
