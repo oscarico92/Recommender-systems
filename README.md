@@ -81,6 +81,7 @@ PyTorch from PyPI is large. On a machine without a GPU, `pip install torch --ind
 | 3. Tune on the validation season | `python -m src.tune` | `eval/results/tuning*.csv`, `best_config.json` |
 | 4. Evaluate on the test season | `python -m eval.run_experiments` | `eval/results/test_results.md`, `case_studies.md`, `docs/figures/loss_curves.png` |
 | 5. Export the served model | `python -m src.export_model` | `models/serving/` |
+| 6. Retrain with the actions logged in the app (optional) | `python -m src.export_model --feedback` | `models/serving/`, see [data/README.md](data/README.md#5-retraining-with-the-app-feedback) |
 
 The player features (`src/features.py`) are built automatically at each cutoff and cached in `data/processed/`. Data rules and limits are described in [data/README.md](data/README.md).
 
@@ -92,6 +93,7 @@ The player features (`src/features.py`) are built automatically at each cutoff a
 - **Two lists**: the main list is ranked by LightGCN. The "new talents" list ranks, with the encoder, the players unknown to the graph (no recruitment by a club of the 10 leagues in the last 10 years). The user can also give a few places of the main list to new talents (`cold_slots`, 0 by default because it lowered NDCG@10 on the validation season).
 - **Re-ranking**: the 50 best candidates are filtered by the club's budget (90th percentile of the values it recruited in the last 3 years, or the user's value), then re-ordered with a bonus for the 12-month market value trend.
 - **Explanations**: the club's recent signings closest to the recommended player in the embedding space.
+- **Feedback loop**: "Shortlist" and "Dismiss" are logged by `/log_interaction`. Dismissed players are hidden at once; shortlisted and signed players become positive edges and dismissed ones hard negatives at the next retraining (`python -m src.export_model --feedback`).
 
 ## Evaluation
 

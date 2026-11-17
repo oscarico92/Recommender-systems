@@ -69,6 +69,7 @@ class Recommender:
         cold_slots: int | None = None,
         position: str | None = None,
         only_new: bool = False,
+        exclude_ids: set[int] | None = None,
     ) -> list[dict]:
         """Top k players for a club.
 
@@ -89,6 +90,8 @@ class Recommender:
         banned = np.isin(self._player_ids, past["player_id"].to_numpy()) | (self._player_club == club_id)
         if position:
             banned |= self._position != position
+        if exclude_ids:
+            banned |= np.isin(self._player_ids, list(exclude_ids))
 
         s_warm = np.where(self.in_graph & ~banned, self.warm_emb @ c, -np.inf)
         s_cold = np.where(~self.in_graph & ~banned, self.cold_emb @ c, -np.inf)

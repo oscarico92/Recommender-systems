@@ -60,7 +60,7 @@ Manual check: the 2023 signings of Manchester United come out right (Mount, Onan
 - **Loans are inferred.** In the public table, a loan, an end of loan and a free transfer all have `transfer_fee = 0`. A loan made permanent (option to buy) or a loan longer than 760 days is seen as a normal transfer. A player who leaves for free and comes back within two years is seen as a loan.
 - **The league of a club is its current one** (`clubs.domestic_competition_id`). A club relegated before the snapshot is not in the selection, even for its older seasons.
 - **Recent loans are not confirmed.** A loan is only recognised once the player comes back, so for the last two seasons `is_loan` is underestimated: 28% of the 2025/26 recruitments are detected loans against about 31% before. `possible_loan` flags the recent one-way moves without fee (29% of 2025/26). It also catches real free transfers, so the true loan share of the test season is between 28% and 57%. The flag is descriptive only, see the next point.
-- **Loans count as full recruitments.** The project plan said loans would be a weaker interaction. We kept them as full interactions for now: a loan is a recruitment decision of the club, and an unequal weight would also depend on the loan definition, which is not the same at the end of the period. `is_loan` and `possible_loan` are kept so that a lower weight can be tested in week 4.
+- **Loans count as full recruitments.** The project plan said loans would be a weaker interaction. We tested it in week 4 (`python -m eval.loan_weight_check`, [results](../eval/results/loan_weight.md)): drawing loans with weight 0.5 gives NDCG@10 0.0087 ± 0.0021 on the validation season against 0.0106 ± 0.0025 with weight 1, so no gain. Loans stay full recruitments (`loan_weight = 1.0` in `src/train.py`): a loan is a recruitment decision of the club.
 - **`transfer_fee` is null when unknown**, so `fee_eur` must not be read as 0 in that case.
 
 ## 3. Player features
@@ -108,6 +108,25 @@ curl -X POST http://localhost:8000/log_interaction \
 ```bash
 curl "http://localhost:8000/interactions?club_id=583"
 ```
+
+## 5. Retraining with the app feedback
+
+```bash
+python -m src.export_model --feedback
+```
+
+Retrains the served model with the actions logged in `data/scoutai.db` and exports it to `models/serving/` (model version `lightgcn-2026-07-01+feedback<N>`). Then restart the API. Rules (`src/feedback.py`), the last action on a (club, player) pair wins:
+
+| Last action | Use in training |
+| --- | --- |
+| signed | positive edge, weight 1 (same as a real transfer) |
+| shortlisted | positive edge, weight 0.5 |
+| dismissed | hard negative for that club (half of its negatives in BPR) |
+| viewed | ignored |
+
+A dismissed player is also hidden at once by `/recommend` for that club, before any retraining.
+
+Check on the real data (`python -m eval.feedback_check`, [results](../eval/results/feedback_check.md)): for Manchester United, 3 players shortlisted at ranks 30, 40 and 50 move to ranks 1 to 3, and the 2 dismissed top players fall below rank 5,000. The other clubs are not disturbed more than by a new training run.
 
 ## Tests
 
