@@ -42,7 +42,7 @@ Objectif : répondre "oui" aux 5 questions du status report.
 ### Simon (Data Engineer)
 - [x] `src/download_data.py` : téléchargement de l'archive Transfermarkt
 - [x] Nettoyage des transferts : retirer retours de prêt, fins de carrière, transferts vers l'équipe réserve ; marquer les prêts (`src/clean_transfers.py`, chiffres dans `data/README.md`)
-- [x] Sélection d'une dizaine de championnats bien couverts et des clubs avec au moins 10 transferts : 26 372 interactions, 322 clubs, 9 880 joueurs
+- [x] Sélection d'une dizaine de championnats bien couverts et des clubs avec au moins 10 transferts : 26 369 interactions, 322 clubs, 9 877 joueurs
 - [x] Schéma SQLite de la table `interactions` (club, joueur, action, timestamp) : `src/db.py`
 - [x] Première version de l'endpoint `/log_interaction` : `api/interactions.py`, testée
 

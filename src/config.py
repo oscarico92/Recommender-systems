@@ -14,6 +14,10 @@ DB_PATH = Path(os.environ.get("SCOUTAI_DB_PATH", DATA_DIR / "scoutai.db"))
 # Public mirror of the transfermarkt-datasets project (CC0, snapshot of July 2026).
 DATA_BASE_URL = "https://pub-e682421888d945d684bcae8890b0ec20.r2.dev/data"
 
+# Date of the Transfermarkt snapshot. Transfers dated after it are dropped, so
+# the cleaned data does not depend on the day the script is run.
+SNAPSHOT_DATE = "2026-07-06"
+
 # Tables needed by the project. "appearances" is large (about 1.9M rows) and is
 # only needed in week 3 for the player features.
 TABLES = [
