@@ -141,7 +141,17 @@ The weights only scale the loss: in the LightGCN propagation a feedback edge is 
 | All other players | +1 | -6 | +17 |
 | Top 10 kept | 80% | 12% | 10% |
 
-The serving-time update does what is expected and keeps most of the list. The retraining cannot be told apart from the noise of a new training run (the top 10 changes about as much with another seed, see issue oscarico92/Recommender-systems#5), so it is not used for the demo.
+The serving-time update does what is expected and keeps most of the list. But this check is close to true by construction: the neighbours are chosen in the same embedding space as the update, so it shows that the code works, not that the players moving up are what a scout needs.
+
+**Offline check on real recruitments** (`python -m eval.feedback_offline_check`, [results](../eval/results/feedback_offline_check.md)). Validation season 2024/25, 251 clubs: the first 2 recruitments of each club act as shortlisted players, and NDCG@10 is measured on its later recruitments.
+
+| Club vector | NDCG@10 (3 seeds) |
+| --- | --- |
+| No update | 0.0094 ± 0.0009 |
+| Updated toward its first 2 signings (strength 0.25) | 0.0094 ± 0.0005 |
+| Updated toward 2 random players (control) | 0.0089 ± 0.0004 |
+
+The update does not make the list better at predicting the next signings; it only hurts less than a random update. A likely reason: after signing a striker, a club looks for other positions, so its next needs are complementary rather than similar. What we can claim is that the list adapts to the scout (more players like the ones shortlisted, the rejected ones gone), not that it becomes more accurate. The retraining cannot be told apart from the noise of a new training run (the top 10 changes about as much with another seed, see issue oscarico92/Recommender-systems#5), so it is not used for the demo.
 
 ## Tests
 
