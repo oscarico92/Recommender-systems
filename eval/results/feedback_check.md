@@ -1,13 +1,38 @@
-# Retraining with app feedback: check
+# Retraining with app feedback: does it generalise?
 
-Club: Manchester United. Serving model (cutoff 2026-07-01), same seed with and without feedback. Shortlisted players are added as positive edges (weight 0.5), dismissed players are hard negatives. In the API, a dismissed player is also hidden at once, before any retraining.
+Serving model (cutoff 2026-07-01). For each of 5 clubs (Manchester United, Benfica, Celtic, RC Lens, Brighton), the players ranked 30, 40 and 50 are shortlisted and the top 2 are dismissed. These 5 players are then hidden from the club's list (the API does the same), so the table measures their neighbours: the 20 closest players to each of them in the embedding space of the model without feedback. Ranks are among about 6,000 warm candidates. Positive = moved up.
 
-| Player | Action | Rank before | Rank after |
-| --- | --- | --- | --- |
-| Arnaut Danjuma | shortlisted | 30 | 1 |
-| David Neres | shortlisted | 40 | 2 |
-| Luuk de Jong | shortlisted | 50 | 3 |
-| André Silva | dismissed | 1 | 5627 |
-| Renato Sanches | dismissed | 2 | 5253 |
+Three columns:
 
-Top 10 overlap with the model without feedback, averaged over the 322 clubs: 29%. Training without feedback with another seed gives 27%: the top 10 of a club already change that much from one training run to the next, so the feedback of one club does not disturb the others more than a new training run does.
+- **Serving-time update** (what the API does): the club vector moves toward the shortlisted players and away from the dismissed ones (Rocchio, strength 0.25), same model, no retraining.
+- **Retraining**: shortlisted players become positive edges (weight 0.5 in the BPR loss) and dismissed players hard negatives (`python -m src.export_model --feedback`), same seed.
+- **New seed**: retraining without any feedback with another seed, the run-to-run noise the retraining column must be compared with.
+
+| Group | Players (5 clubs) | Serving-time update | Retraining | New seed, no feedback |
+| --- | --- | --- | --- | --- |
+| neighbours of shortlisted | 292 | +41 | -136 | -226 |
+| neighbours of dismissed | 172 | -85 | -276 | -372 |
+| all other players | 37255 | +1 | -6 | +17 |
+
+Top 10 kept (mean over the clubs): serving-time update 80%, retraining 12%, new seed 10%.
+
+
+Per club:
+
+| Club | Group | Players | Serving-time update | Retraining | New seed |
+| --- | --- | --- | --- | --- | --- |
+| Manchester United | neighbours of shortlisted | 54 | +24 | -14 | -75 |
+| Manchester United | neighbours of dismissed | 29 | -11 | -51 | -30 |
+| Manchester United | all other players | 7492 | +0 | +1 | +10 |
+| Benfica | neighbours of shortlisted | 60 | +84 | -134 | -484 |
+| Benfica | neighbours of dismissed | 39 | -38 | -138 | -378 |
+| Benfica | all other players | 7432 | -14 | +4 | -6 |
+| Celtic | neighbours of shortlisted | 60 | +48 | -506 | -203 |
+| Celtic | neighbours of dismissed | 32 | -80 | -357 | -118 |
+| Celtic | all other players | 7443 | +11 | -2 | +15 |
+| RC Lens | neighbours of shortlisted | 58 | +2 | +34 | -28 |
+| RC Lens | neighbours of dismissed | 35 | -66 | -303 | -146 |
+| RC Lens | all other players | 7432 | -8 | -28 | +17 |
+| Brighton | neighbours of shortlisted | 60 | +46 | -62 | -340 |
+| Brighton | neighbours of dismissed | 37 | -231 | -531 | -1189 |
+| Brighton | all other players | 7456 | +16 | -8 | +49 |
