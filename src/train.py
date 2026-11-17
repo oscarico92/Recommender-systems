@@ -38,8 +38,9 @@ class Config:
     patience: int = 6            # checks without improvement before stopping
     warm_mix: float = 0.0        # share of the encoder embedding for warm players
     cold_slots: int = 2          # places of the top 10 kept for never transferred players
-    loan_weight: float = 1.0     # sampling weight of loan recruitments
-    hard_negative_rate: float = 0.5  # share of negatives drawn from dismissed players, when any
+    loan_weight: float = 1.0     # weight of loan recruitments in the BPR loss
+    hard_negative_rate: float = 0.05  # per dismissed player: share of the club's negatives drawn from them
+    hard_negative_max: float = 0.3    # cap of that share
     seed: int = 0
 
 
@@ -80,10 +81,15 @@ def _hard_negatives(feedback, graph: Graph, node_of: pd.Series) -> dict[int, np.
     return {c: np.array(v) for c, v in out.items()}
 
 
-def _swap_hard_negatives(neg, clubs, hard_neg, rate, rng):
+def _swap_hard_negatives(neg, clubs, hard_neg, rate, cap, rng):
+    """Replace some random negatives by players the club dismissed.
+
+    The share grows with the number of dismissals (rate per player, capped),
+    so 2 dismissals do not become half of the club's negatives.
+    """
     neg = neg.clone()
     for k, c in enumerate(clubs.tolist()):
-        if c in hard_neg and rng.random() < rate:
+        if c in hard_neg and rng.random() < min(cap, rate * len(hard_neg[c])):
             neg[k] = int(rng.choice(hard_neg[c]))
     return neg
 
@@ -117,22 +123,25 @@ def fit(
     opt = torch.optim.Adam(model.parameters(), lr=cfg.lr)
     n_edges = len(graph.pos_club)
     weights = graph.pos_weight
-    weighted = weights is not None and bool((weights != weights[0]).any())
+    weighted = weights is not None and bool((weights != 1).any())
     if monitor:
         v_club, v_pos = _val_edges(setup, graph, in_graph, cat_to_node)
 
     log, best, best_state, best_epoch, bad = [], -1.0, None, cfg.epochs, 0
     for epoch in range(1, cfg.epochs + 1):
         model.train()
-        # weighted edges (loans, feedback) are drawn in proportion to their weight
-        perm = torch.multinomial(weights, n_edges, replacement=True) if weighted else torch.randperm(n_edges)
+        # every edge once per epoch; weighted edges (loans, feedback) count
+        # in proportion to their weight in the loss, not in the sampling
+        perm = torch.randperm(n_edges)
         total = 0.0
         for i in range(0, n_edges, cfg.batch):
             b = perm[i: i + cfg.batch]
             neg = torch.from_numpy(rng.integers(0, graph.n_players, len(b)))
             if hard_neg:
-                neg = _swap_hard_negatives(neg, graph.pos_club[b], hard_neg, cfg.hard_negative_rate, rng)
-            loss = model.bpr_loss(graph.edge_index, graph.pos_club[b], graph.pos_player[b], neg, cfg.reg)
+                neg = _swap_hard_negatives(neg, graph.pos_club[b], hard_neg, cfg.hard_negative_rate,
+                                           cfg.hard_negative_max, rng)
+            loss = model.bpr_loss(graph.edge_index, graph.pos_club[b], graph.pos_player[b], neg, cfg.reg,
+                                  weight=weights[b] if weighted else None)
             opt.zero_grad()
             loss.backward()
             opt.step()

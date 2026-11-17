@@ -67,3 +67,53 @@ def test_dismissed_player_hidden_by_api(tmp_path):
         assert first["player_id"] not in ids
     finally:
         app.dependency_overrides.clear()
+
+
+def test_club_query_moves_neighbours_of_liked_players_up():
+    from src.config import SERVING_DIR
+    from src.predict import Recommender
+
+    if not (SERVING_DIR / "embeddings.npz").exists():
+        pytest.skip("no exported model")
+    rec = Recommender.load()
+    ci = rec._club_pos[985]
+    warm = np.where(rec.in_graph)[0]
+    base = rec.warm_emb[warm] @ rec.club_emb[ci]
+    liked = warm[np.argsort(-base)[40]]            # a player ranked about 40
+    unit = rec.warm_emb[warm] / np.linalg.norm(rec.warm_emb[warm], axis=1, keepdims=True)
+    near = np.argsort(-(unit @ unit[np.searchsorted(warm, liked)]))[1:21]
+    q = rec.club_query(ci, liked_ids={int(rec._player_ids[liked])})
+    after = rec.warm_emb[warm] @ q
+    rank = lambda s: np.argsort(np.argsort(-s))  # noqa: E731
+    assert np.median(rank(base)[near] - rank(after)[near]) > 0   # neighbours move up
+    assert np.allclose(rec.club_query(ci), rec.club_emb[ci])     # no feedback, no change
+
+
+def test_shortlisted_player_hidden_by_api(tmp_path):
+    from api.interactions import get_db, get_known_ids
+    from api.main import app
+    from src.config import SERVING_DIR
+    from src.db import connect
+
+    if not (SERVING_DIR / "embeddings.npz").exists():
+        pytest.skip("no exported model")
+    path = tmp_path / "t.db"
+
+    def db():
+        conn = connect(path)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    app.dependency_overrides[get_db] = db
+    app.dependency_overrides[get_known_ids] = lambda: None
+    try:
+        client = TestClient(app)
+        first = client.get("/recommend", params={"club_id": 985, "k": 5}).json()["recommendations"][0]
+        client.post("/log_interaction", json={"club_id": 985, "player_id": first["player_id"], "action": "shortlisted"})
+        body = client.get("/recommend", params={"club_id": 985, "k": 5}).json()
+        assert first["player_id"] not in [x["player_id"] for x in body["recommendations"]]
+        assert body["feedback"] == {"liked": 1, "dismissed": 0}
+    finally:
+        app.dependency_overrides.clear()
