@@ -60,7 +60,7 @@ Manual check: the 2023 signings of Manchester United come out right (Mount, Onan
 - **Loans are inferred.** In the public table, a loan, an end of loan and a free transfer all have `transfer_fee = 0`. A loan made permanent (option to buy) or a loan longer than 760 days is seen as a normal transfer. A player who leaves for free and comes back within two years is seen as a loan.
 - **The league of a club is its current one** (`clubs.domestic_competition_id`). A club relegated before the snapshot is not in the selection, even for its older seasons.
 - **Recent loans are not confirmed.** A loan is only recognised once the player comes back, so for the last two seasons `is_loan` is underestimated: 28% of the 2025/26 recruitments are detected loans against about 31% before. `possible_loan` flags the recent one-way moves without fee (29% of 2025/26). It also catches real free transfers, so the true loan share of the test season is between 28% and 57%. The flag is descriptive only, see the next point.
-- **Loans count as full recruitments.** The project plan said loans would be a weaker interaction. We tested it in week 4 (`python -m eval.loan_weight_check`, [results](../eval/results/loan_weight.md)): drawing loans with weight 0.5 gives NDCG@10 0.0087 ± 0.0021 on the validation season against 0.0106 ± 0.0025 with weight 1, so no gain. Loans stay full recruitments (`loan_weight = 1.0` in `src/train.py`): a loan is a recruitment decision of the club.
+- **Loans count as full recruitments.** The project plan said loans would be a weaker interaction. We tested it in week 4 (`python -m eval.loan_weight_check`, [results](../eval/results/loan_weight.md)), with the weight applied to the BPR loss of each loan: weight 0.5 gives NDCG@10 0.0116 ± 0.0020 on the validation season against 0.0106 ± 0.0025 with weight 1. The difference is within one standard deviation, so there is no evidence of a gain, and loans stay full recruitments (`loan_weight = 1.0` in `src/train.py`): a loan is a recruitment decision of the club.
 - **`transfer_fee` is null when unknown**, so `fee_eur` must not be read as 0 in that case.
 
 ## 3. Player features
@@ -109,24 +109,39 @@ curl -X POST http://localhost:8000/log_interaction \
 curl "http://localhost:8000/interactions?club_id=583"
 ```
 
-## 5. Retraining with the app feedback
+## 5. App feedback
+
+"Shortlist" and "Dismiss" in the app are logged by `/log_interaction`. For each (club, player) pair only the last action counts. They are used in two ways.
+
+**At once, in the API (main mechanism).** `/recommend` hides the players the club shortlisted, signed or dismissed, and moves the club vector toward the liked players and away from the dismissed ones (Rocchio update, `Recommender.club_query` in `src/predict.py`, strength 0.25). No retraining is needed, and players similar to a shortlisted one move up.
+
+**At the next retraining (optional).**
 
 ```bash
 python -m src.export_model --feedback
 ```
 
-Retrains the served model with the actions logged in `data/scoutai.db` and exports it to `models/serving/` (model version `lightgcn-2026-07-01+feedback<N>`). Then restart the API. Rules (`src/feedback.py`), the last action on a (club, player) pair wins:
+Retrains the served model with the logged actions (`src/feedback.py`) and exports it to `models/serving/` (model version `lightgcn-2026-07-01+feedback<N>`). Then restart the API.
 
-| Last action | Use in training |
+| Last action | Use in retraining |
 | --- | --- |
-| signed | positive edge, weight 1 (same as a real transfer) |
-| shortlisted | positive edge, weight 0.5 |
-| dismissed | hard negative for that club (half of its negatives in BPR) |
+| signed | positive edge, weight 1 in the BPR loss (same as a real transfer) |
+| shortlisted | positive edge, weight 0.5 in the BPR loss |
+| dismissed | hard negative for that club: 5% of its negatives per dismissed player, at most 30% |
 | viewed | ignored |
 
-A dismissed player is also hidden at once by `/recommend` for that club, before any retraining.
+The weights only scale the loss: in the LightGCN propagation a feedback edge is a full neighbour, like a transfer.
 
-Check on the real data (`python -m eval.feedback_check`, [results](../eval/results/feedback_check.md)): for Manchester United, 3 players shortlisted at ranks 30, 40 and 50 move to ranks 1 to 3, and the 2 dismissed top players fall below rank 5,000. The other clubs are not disturbed more than by a new training run.
+**Check** (`python -m eval.feedback_check`, [results](../eval/results/feedback_check.md)). On 5 clubs, a scout shortlists the players ranked 30, 40 and 50 and dismisses the top 2. These players are then hidden, so moving them would only show memorisation; the check measures their 20 nearest neighbours instead (median rank change, positive = up):
+
+| Group | Serving-time update | Retraining | New seed, no feedback |
+| --- | --- | --- | --- |
+| Neighbours of shortlisted players | +41 | -136 | -226 |
+| Neighbours of dismissed players | -85 | -276 | -372 |
+| All other players | +1 | -6 | +17 |
+| Top 10 kept | 80% | 12% | 10% |
+
+The serving-time update does what is expected and keeps most of the list. The retraining cannot be told apart from the noise of a new training run (the top 10 changes about as much with another seed, see issue oscarico92/Recommender-systems#5), so it is not used for the demo.
 
 ## Tests
 

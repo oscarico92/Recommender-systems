@@ -3,6 +3,10 @@
 Usage (retrain and export the served model with the feedback):
     python -m src.export_model --feedback
 
+The API already uses the feedback at once, without retraining (see
+Recommender.club_query in src/predict.py). Retraining is optional: on its
+own its effect is within the run-to-run noise (eval/results/feedback_check.md).
+
 The SQLite table `interactions` (see src/db.py) stores what club users do
 with the recommended players. For each (club, player) pair only the last
 action counts, so a player shortlisted then dismissed is a dismissal.
@@ -11,11 +15,11 @@ action counts, so a player shortlisted then dismissed is a dismissal.
 | ------------ | ---------------------------------------- | ------ |
 | signed       | positive edge in the graph               | 1.0    |
 | shortlisted  | positive edge in the graph               | 0.5    |
-| dismissed    | hard negative for that club in BPR       | -      |
+| dismissed    | hard negative for that club in BPR       | 5% each, max 30% of its negatives |
 | viewed       | ignored (seeing a player says nothing)   | -      |
 
-The weight is the probability, relative to a real transfer (1.0), that the
-edge is drawn as a positive in a training step.
+The weight multiplies the BPR loss of the edge, relative to a real
+transfer (1.0). Every edge is still seen once per epoch.
 """
 
 import sqlite3

@@ -81,7 +81,7 @@ PyTorch from PyPI is large. On a machine without a GPU, `pip install torch --ind
 | 3. Tune on the validation season | `python -m src.tune` | `eval/results/tuning*.csv`, `best_config.json` |
 | 4. Evaluate on the test season | `python -m eval.run_experiments` | `eval/results/test_results.md`, `case_studies.md`, `docs/figures/loss_curves.png` |
 | 5. Export the served model | `python -m src.export_model` | `models/serving/` |
-| 6. Retrain with the actions logged in the app (optional) | `python -m src.export_model --feedback` | `models/serving/`, see [data/README.md](data/README.md#5-retraining-with-the-app-feedback) |
+| 6. Retrain with the actions logged in the app (optional) | `python -m src.export_model --feedback` | `models/serving/`, see [data/README.md](data/README.md#5-app-feedback) |
 
 The player features (`src/features.py`) are built automatically at each cutoff and cached in `data/processed/`. Data rules and limits are described in [data/README.md](data/README.md).
 
@@ -93,7 +93,7 @@ The player features (`src/features.py`) are built automatically at each cutoff a
 - **Two lists**: the main list is ranked by LightGCN. The "new talents" list ranks, with the encoder, the players unknown to the graph (no recruitment by a club of the 10 leagues in the last 10 years). The user can also give a few places of the main list to new talents (`cold_slots`, 0 by default because it lowered NDCG@10 on the validation season).
 - **Re-ranking**: the 50 best candidates are filtered by the club's budget (90th percentile of the values it recruited in the last 3 years, or the user's value), then re-ordered with a bonus for the 12-month market value trend.
 - **Explanations**: the club's recent signings closest to the recommended player in the embedding space.
-- **Feedback loop**: "Shortlist" and "Dismiss" are logged by `/log_interaction`. Dismissed players are hidden at once; shortlisted and signed players become positive edges and dismissed ones hard negatives at the next retraining (`python -m src.export_model --feedback`).
+- **Feedback loop**: "Shortlist" and "Dismiss" are logged by `/log_interaction`. At once, `/recommend` hides these players and moves the club vector toward the shortlisted ones and away from the dismissed ones (Rocchio update), so similar players move up without retraining. Retraining with the feedback is also possible (`python -m src.export_model --feedback`) but its effect is within the run-to-run noise (see [data/README.md](data/README.md#5-app-feedback)).
 
 ## Evaluation
 
@@ -134,6 +134,8 @@ What it shows:
 - **What is not shown.** The NDCG@10 differences between the LightGCN variants (0.0098 to 0.0125) are within one standard deviation over 3 seeds, so we do not claim that the re-ranking improves accuracy, only that it does not hurt it.
 - **Value change.** Every model list loses value in the following year (-0.11 to -0.24), while random gains (+0.07) and the players actually signed gain more (+0.19). The reason is age: the top 10 of the models average 28 to 30 years, against 24.5 for the real signings and 25.8 for the catalogue. LightGCN learns from experienced players who changed clubs many times, and older players lose value. The resale bonus reduces the loss (-0.21 to -0.11, about 0.7 year younger) but does not remove it.
 - Absolute values are low because each club signs about 10 players among 17,628 candidates: a random ranking scores 0.0004.
+
+- **Run-to-run instability.** Two trainings that differ only by the seed share about 10 to 30% of a club's top 10, while the averaged metrics stay stable (± 0.0014 on NDCG@10 over 3 seeds). The lists shown in the demo and the case studies therefore depend on the training run. The committed model in `models/serving/` is the one used for the showcase. Tracked in issue oscarico92/Recommender-systems#5.
 
 Known limits, to work on in week 4: the age and popularity bias above (the same experienced forwards appear for several clubs, see [case studies](eval/results/case_studies.md)), and new talents lists that include established stars who simply have not moved in 10 years. Training curves: [docs/figures/loss_curves.png](docs/figures/loss_curves.png).
 
