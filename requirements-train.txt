@@ -1,0 +1,6 @@
+# Re-train the model (adds PyTorch and PyTorch Geometric)
+-r requirements.txt
+torch>=2.2
+torch_geometric>=2.5
+matplotlib>=3.8
+duckdb>=1.0

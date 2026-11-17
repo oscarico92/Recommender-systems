@@ -55,3 +55,19 @@ NON_CLUB_NAMES = {
     "ban",
     "pause",
 }
+
+# Temporal split (season boundaries). Train: before VAL_START, validation:
+# season 2024/25, test: season 2025/26 and everything after.
+VAL_START = "2024-07-01"
+TEST_START = "2025-07-01"
+# Cutoff used for the model served by the API (all data before it is used).
+SERVING_CUTOFF = "2026-07-01"
+
+MODELS_DIR = ROOT_DIR / "models"
+SERVING_DIR = MODELS_DIR / "serving"
+RESULTS_DIR = ROOT_DIR / "eval" / "results"
+FIGURES_DIR = ROOT_DIR / "docs" / "figures"
+
+# A player is in the catalogue at a cutoff if he has a market valuation in
+# the year before it (active player), and is at most this old.
+CATALOG_MAX_AGE = 36
