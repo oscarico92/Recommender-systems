@@ -62,3 +62,20 @@ def test_rerank_budget_and_resale():
     assert out.tolist() == [1, 2, 0]          # over budget goes last, excluded never appears
     out = rerank_group(scores, value, trend, budget=10e6, resale_weight=5.0, length=2)
     assert out.tolist() == [2, 1]             # strong resale focus favours the rising player
+
+
+def test_rerank_age_and_mobility():
+    scores = np.array([3.0, 2.0, 1.0])
+    value = np.full(3, 1e6)
+    trend = np.zeros(3)
+    age = np.array([31.0, 29.0, 21.0])
+    moves = np.array([0.0, 6.0, 1.0])
+    base = rerank_group(scores, value, trend, None, 0.0, 3)
+    assert base.tolist() == [0, 1, 2]
+    # default weights (0) keep the model order even when age and moves are given
+    same = rerank_group(scores, value, trend, None, 0.0, 3, age=age, moves=moves)
+    assert same.tolist() == base.tolist()
+    young = rerank_group(scores, value, trend, None, 0.0, 3, age=age, age_weight=5.0)
+    assert young[0] == 2                      # strong age penalty puts the 21-year-old first
+    calm = rerank_group(scores, value, trend, None, 0.0, 3, moves=moves, mobility_weight=5.0)
+    assert calm[-1] == 1                      # the player with 6 moves goes last
