@@ -52,12 +52,18 @@ with st.sidebar:
                          help="Defaults to what the club usually pays (90th percentile, last 3 years).")
     resale = st.slider("Resale focus", 0.0, 2.0, 0.5, 0.1,
                        help="Favours players whose market value went up in the last 12 months.")
+    youth = st.slider("Youth focus", 0.0, 2.0, 0.0, 0.1,
+                      help="Pushes younger players up. The raw model favours players of 28-30, "
+                           "clubs actually sign players of about 24.5.")
+    mobility = st.slider("Penalty for frequent movers", 0.0, 2.0, 0.0, 0.1,
+                         help="Pushes down players who changed club many times.")
     cold = st.slider("Places for new talents in the main list", 0, 3, 0,
                      help="0 gives the most accurate list. The new talents are also shown below.")
     position = st.selectbox("Position", ["All", "Goalkeeper", "Defender", "Midfield", "Attack"])
     k = st.slider("Number of players", 5, 20, 10)
 
-params = {"club_id": club_id, "k": k, "budget_eur": budget_m * 1e6, "resale_weight": resale, "cold_slots": cold}
+params = {"club_id": club_id, "k": k, "budget_eur": budget_m * 1e6, "resale_weight": resale,
+          "age_weight": youth, "mobility_weight": mobility, "cold_slots": cold}
 if position != "All":
     params["position"] = position
 
@@ -87,7 +93,10 @@ def card(rec: dict, data: dict, section: str) -> None:
                    f"{(pow(2.718281828, trend) - 1) * 100:+.0f}% in 12 months")
         if rec["similar_to"]:
             sims = ", ".join(f"{s['name']} ({s['year']})" for s in rec["similar_to"])
-            left.caption(f"Similar to your signings: {sims}")
+            if rec["similar_to"][0].get("basis") == "profile":
+                left.caption(f"Same profile as your signings: {sims}")
+            else:
+                left.caption(f"Similar to your signings: {sims}")
         if right.button("Shortlist", key=f"{section}s{rec['player_id']}"):
             log(club_id, rec["player_id"], "shortlisted", rec["rank"], data["model_version"])
         if right.button("Dismiss", key=f"{section}d{rec['player_id']}"):

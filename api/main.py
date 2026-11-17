@@ -50,6 +50,8 @@ def recommend(
     k: int = Query(10, ge=1, le=50),
     budget_eur: float | None = Query(None, gt=0, description="Defaults to the club's usual budget"),
     resale_weight: float = Query(0.5, ge=0, le=3, description="Weight of the 12-month value trend"),
+    age_weight: float | None = Query(None, ge=0, le=3, description="Penalty on age (corrects the age bias). Defaults to the value tuned on validation"),
+    mobility_weight: float | None = Query(None, ge=0, le=3, description="Penalty on players who changed club often. Defaults to the value tuned on validation"),
     cold_slots: int | None = Query(None, ge=0, le=5, description="Places of the top 10 for players unknown to the graph"),
     position: Literal["Goalkeeper", "Defender", "Midfield", "Attack"] | None = None,
     new_talents: bool = Query(False, description="Only players unknown to the graph (no recruitment by a selected club in 10 years), ranked by the cold-start encoder"),
@@ -57,7 +59,12 @@ def recommend(
     rec = get_recommender()
     start = time.perf_counter()
     try:
+        if age_weight is None:
+            age_weight = float(rec.config.get("age_weight", 0.0))
+        if mobility_weight is None:
+            mobility_weight = float(rec.config.get("mobility_weight", 0.0))
         items = rec.recommend(club_id, k=k, budget=budget_eur, resale_weight=resale_weight,
+                              age_weight=age_weight, mobility_weight=mobility_weight,
                               cold_slots=cold_slots, position=position, only_new=new_talents)
     except KeyError:
         raise HTTPException(404, f"Unknown club_id {club_id}. See /clubs.")
@@ -67,6 +74,8 @@ def recommend(
         "club_name": club["club_name"],
         "budget_eur": budget_eur if budget_eur is not None else float(club["budget_eur"]),
         "model_version": rec.config.get("model_version"),
+        "age_weight": age_weight,
+        "mobility_weight": mobility_weight,
         "latency_ms": round((time.perf_counter() - start) * 1000, 1),
         "recommendations": items,
     }
