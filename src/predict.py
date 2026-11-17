@@ -15,12 +15,11 @@ import numpy as np
 import pandas as pd
 
 from src.config import SERVING_DIR
+from src.rerank import merge_with_cold_slots, rerank_group
 
 # Strength of the serving-time feedback update (see club_query). Checked in
-# eval/feedback_check.py: neighbours of shortlisted players move up, about
-# 80% of the top 10 stays the same.
+# eval/feedback_check.py and eval/feedback_offline_check.py.
 FEEDBACK_STRENGTH = 0.25
-from src.rerank import merge_with_cold_slots, rerank_group
 
 
 @dataclass

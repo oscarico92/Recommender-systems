@@ -41,6 +41,8 @@ Rules, numbers and limits: [data/README.md](../data/README.md).
 
 **Why not just retrain with the feedback?** It is possible (`python -m src.export_model --feedback`, shortlisted as weighted positive edges, dismissed as hard negatives), but the first check only showed memorisation: the shortlisted players themselves jumped to the top, which is useless since the club already has them. On their neighbours, the effect of retraining cannot be told apart from the noise of a new training run. Code review pointed this out; the serving-time update is the honest answer.
 
+**Does the app get more accurate with clicks?** No, and say it plainly. Offline check on 2024/25 (251 clubs): using each club's first 2 signings as a shortlist leaves NDCG@10 on its later signings unchanged (0.0094 with and without the update), while a random shortlist lowers it (0.0089). The list adapts to the scout (similar players up, rejected ones gone), but the next real signings are often in other positions, so similarity does not predict them. Pitch wording: "the list adapts to your choices", not "it learns and gets more accurate".
+
 **Why SQLite?** One file, no server, enough for the demo. The API opens one connection per request. For production with many users, PostgreSQL with the same table.
 
 ## Points for the rest of the team
