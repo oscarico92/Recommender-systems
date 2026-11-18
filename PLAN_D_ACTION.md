@@ -106,7 +106,8 @@ Priorités issues du test de la semaine 3 (voir les issues GitHub).
 - [ ] Explications des nouveaux talents : aujourd'hui elles affichent toutes les mêmes joueurs "similaires", elles doivent varier d'un joueur à l'autre
 
 ### Simon et Mathis
-- [ ] Réentraînement avec les interactions loggées dans l'app
+- [x] Feedback de l'app : mise à jour immédiate du vecteur du club dans l'API (Rocchio), réentraînement possible avec `python -m src.export_model --feedback`, vérification dans `eval/results/feedback_check.md`
+- [x] Pondération des prêts testée (aucune preuve de gain, poids gardé à 1) : `eval/results/loan_weight.md`
 
 ### Oscar
 - [ ] Métriques finales et graphiques (loss, ablation) après les corrections, mise à jour de `eval/results/`

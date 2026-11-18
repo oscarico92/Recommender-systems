@@ -60,7 +60,7 @@ Manual check: the 2023 signings of Manchester United come out right (Mount, Onan
 - **Loans are inferred.** In the public table, a loan, an end of loan and a free transfer all have `transfer_fee = 0`. A loan made permanent (option to buy) or a loan longer than 760 days is seen as a normal transfer. A player who leaves for free and comes back within two years is seen as a loan.
 - **The league of a club is its current one** (`clubs.domestic_competition_id`). A club relegated before the snapshot is not in the selection, even for its older seasons.
 - **Recent loans are not confirmed.** A loan is only recognised once the player comes back, so for the last two seasons `is_loan` is underestimated: 28% of the 2025/26 recruitments are detected loans against about 31% before. `possible_loan` flags the recent one-way moves without fee (29% of 2025/26). It also catches real free transfers, so the true loan share of the test season is between 28% and 57%. The flag is descriptive only, see the next point.
-- **Loans count as full recruitments.** The project plan said loans would be a weaker interaction. We kept them as full interactions for now: a loan is a recruitment decision of the club, and an unequal weight would also depend on the loan definition, which is not the same at the end of the period. `is_loan` and `possible_loan` are kept so that a lower weight can be tested in week 4.
+- **Loans count as full recruitments.** The project plan said loans would be a weaker interaction. We tested it in week 4 (`python -m eval.loan_weight_check`, [results](../eval/results/loan_weight.md)), with the weight applied to the BPR loss of each loan: weight 0.5 gives NDCG@10 0.0116 ± 0.0020 on the validation season against 0.0106 ± 0.0025 with weight 1. The difference is within one standard deviation, so there is no evidence of a gain, and loans stay full recruitments (`loan_weight = 1.0` in `src/train.py`): a loan is a recruitment decision of the club.
 - **`transfer_fee` is null when unknown**, so `fee_eur` must not be read as 0 in that case.
 
 ## 3. Player features
@@ -108,6 +108,50 @@ curl -X POST http://localhost:8000/log_interaction \
 ```bash
 curl "http://localhost:8000/interactions?club_id=583"
 ```
+
+## 5. App feedback
+
+"Shortlist" and "Dismiss" in the app are logged by `/log_interaction`. For each (club, player) pair only the last action counts. They are used in two ways.
+
+**At once, in the API (main mechanism).** `/recommend` hides the players the club shortlisted, signed or dismissed, and moves the club vector toward the liked players and away from the dismissed ones (Rocchio update, `Recommender.club_query` in `src/predict.py`, strength 0.25). No retraining is needed, and players similar to a shortlisted one move up.
+
+**At the next retraining (optional).**
+
+```bash
+python -m src.export_model --feedback
+```
+
+Retrains the served model with the logged actions (`src/feedback.py`) and exports it to `models/serving/` (model version `lightgcn-2026-07-01+feedback<N>`). Then restart the API.
+
+| Last action | Use in retraining |
+| --- | --- |
+| signed | positive edge, weight 1 in the BPR loss (same as a real transfer) |
+| shortlisted | positive edge, weight 0.5 in the BPR loss |
+| dismissed | hard negative for that club: 5% of its negatives per dismissed player, at most 30% |
+| viewed | ignored |
+
+The weights only scale the loss: in the LightGCN propagation a feedback edge is a full neighbour, like a transfer.
+
+**Check** (`python -m eval.feedback_check`, [results](../eval/results/feedback_check.md)). On 5 clubs, a scout shortlists the players ranked 30, 40 and 50 and dismisses the top 2. These players are then hidden, so moving them would only show memorisation; the check measures their 20 nearest neighbours instead (median rank change, positive = up):
+
+| Group | Serving-time update | Retraining | New seed, no feedback |
+| --- | --- | --- | --- |
+| Neighbours of shortlisted players | +41 | -136 | -226 |
+| Neighbours of dismissed players | -85 | -276 | -372 |
+| All other players | +1 | -6 | +17 |
+| Top 10 kept | 80% | 12% | 10% |
+
+The serving-time update does what is expected and keeps most of the list. But this check is close to true by construction: the neighbours are chosen in the same embedding space as the update, so it shows that the code works, not that the players moving up are what a scout needs.
+
+**Offline check on real recruitments** (`python -m eval.feedback_offline_check`, [results](../eval/results/feedback_offline_check.md)). Validation season 2024/25, 251 clubs: the first 2 recruitments of each club act as shortlisted players, and NDCG@10 is measured on its later recruitments.
+
+| Club vector | NDCG@10 (3 seeds) |
+| --- | --- |
+| No update | 0.0094 ± 0.0009 |
+| Updated toward its first 2 signings (strength 0.25) | 0.0094 ± 0.0005 |
+| Updated toward 2 random players (control) | 0.0089 ± 0.0004 |
+
+The update does not make the list better at predicting the next signings; it only hurts less than a random update. A likely reason: after signing a striker, a club looks for other positions, so its next needs are complementary rather than similar. What we can claim is that the list adapts to the scout (more players like the ones shortlisted, the rejected ones gone), not that it becomes more accurate. The retraining cannot be told apart from the noise of a new training run (the top 10 changes about as much with another seed, see issue oscarico92/Recommender-systems#5), so it is not used for the demo.
 
 ## Tests
 

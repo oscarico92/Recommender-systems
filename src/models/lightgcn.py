@@ -29,11 +29,15 @@ class ClubPlayerLightGCN(torch.nn.Module):
         pos: torch.Tensor,
         neg: torch.Tensor,
         reg: float = 1e-4,
+        weight: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        """BPR loss. `weight` multiplies the loss of each positive edge
+        (1 = a real transfer); with no weight it is the usual mean."""
         clubs, players = self.embeddings(edge_index)
         pos_score = (clubs[club] * players[pos]).sum(-1)
         neg_score = (clubs[club] * players[neg]).sum(-1)
-        loss = -torch.nn.functional.logsigmoid(pos_score - neg_score).mean()
+        per_edge = -torch.nn.functional.logsigmoid(pos_score - neg_score)
+        loss = per_edge.mean() if weight is None else (weight * per_edge).mean()
         # L2 on the layer-0 embeddings of the batch, as in the paper
         e0 = self.model.embedding.weight
         l2 = (e0[club].pow(2).sum() + e0[pos + self.n_clubs].pow(2).sum()
