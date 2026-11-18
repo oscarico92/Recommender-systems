@@ -39,3 +39,13 @@ def test_age_weight_lowers_mean_age(rec):
         ages = [o["age"] for c in clubs for o in rec.recommend(int(c), k=10, age_weight=w)]
         return sum(ages) / len(ages)
     assert mean_age(1.0) < mean_age(0.0) - 1.0
+
+
+def test_config_endpoint_matches_recommend_defaults(rec):
+    from fastapi.testclient import TestClient
+
+    from api.main import app
+    client = TestClient(app)
+    cfg = client.get("/config").json()
+    out = client.get("/recommend", params={"club_id": int(rec.clubs["club_id"].iloc[0])}).json()
+    assert out["age_weight"] == cfg["age_weight"] and out["mobility_weight"] == cfg["mobility_weight"]

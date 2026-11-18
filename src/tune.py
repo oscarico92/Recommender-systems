@@ -2,14 +2,15 @@
 
 Usage:
     python -m src.tune                  # full search (long)
-    python -m src.tune --rerank-only    # only step 3, with the current best_config.json
+    python -m src.tune --rerank-only    # only step 3, retrains best_config.json with 3 seeds
 
 1. LightGCN grid (history window, layers, L2) with early stopping on the
    validation warm NDCG@10.
 2. With the best LightGCN, choice of warm_mix and cold_slots on the
    validation NDCG@10 (all targets).
 3. Choice of the re-ranking weights (resale, age, mobility) on the
-   validation NDCG@10, with the budget filter on.
+   validation season, budget filter on, 3 seeds: the strongest age weight
+   whose NDCG@10 stays within one seed std of the best (see select_rerank).
 Nothing from the test season is used. Writes eval/results/tuning.csv,
 eval/results/tuning_hybrid.csv, eval/results/tuning_rerank.csv,
 eval/results/best_config.json, eval/results/best_rerank.json and
@@ -28,6 +29,7 @@ from eval.harness import build_setup, evaluate
 from src.config import RESULTS_DIR, TEST_START, VAL_START
 from src.features import _raw, load_or_build
 from src.split import load_interactions
+from src.rerank import select_rerank
 from src.train import Config, config_dict, fit, ranking
 
 RERANK_GRID = {
@@ -43,25 +45,38 @@ GRID = {
 }
 
 
-def tune_rerank(fitted, setup, feats, warm_mix: float) -> dict:
-    """Grid over the re-ranking weights on the validation season (no retraining)."""
+RERANK_SEEDS = [0, 1, 2]
+
+
+def tune_rerank(setup, feats, cfg: Config) -> dict:
+    """Grid over the re-ranking weights on the validation season, mean and std over seeds."""
     from eval.run_experiments import reranked
 
-    fitted.config = replace(fitted.config, warm_mix=warm_mix, cold_slots=0)
+    fits = []
+    for seed in RERANK_SEEDS:
+        fi = fit(setup, feats, replace(cfg, seed=seed), monitor=False, verbose=False)
+        fi.config = replace(fi.config, cold_slots=0)
+        fits.append(fi)
     rows = []
     for weights in itertools.product(*RERANK_GRID.values()):
         w = dict(zip(RERANK_GRID, weights))
-        m = evaluate(setup, None, ranked=reranked(fitted, setup, feats, **w))
-        rows.append({**w, **m})
-        print(f"{w}: ndcg@10={m['ndcg@10']:.4f} age@10={m['age@10']:.1f} "
-              f"value_change@10={m['value_change@10']:+.3f}", flush=True)
-    rows = pd.DataFrame(rows)
-    rows.to_csv(RESULTS_DIR / "tuning_rerank.csv", index=False)
-    top = rows.sort_values("ndcg@10", ascending=False).iloc[0]
+        runs = pd.DataFrame([evaluate(setup, None, ranked=reranked(fi, setup, feats, **w)) for fi in fits])
+        row = {**w}
+        for m in ["ndcg@10", "recall@20", "age@10", "value_change@10", "within_budget@10", "coverage@10"]:
+            row[m] = runs[m].mean()
+            row[m + "_std"] = runs[m].std(ddof=0)
+        rows.append(row)
+        print(f"{w}: ndcg@10={row['ndcg@10']:.4f} ± {row['ndcg@10_std']:.4f} age@10={row['age@10']:.1f} "
+              f"value_change@10={row['value_change@10']:+.3f}", flush=True)
+    table = pd.DataFrame(rows)
+    top = select_rerank(table)
+    table["selected"] = (table[list(RERANK_GRID)] == top[list(RERANK_GRID)]).all(axis=1)
+    table.to_csv(RESULTS_DIR / "tuning_rerank.csv", index=False)
     best = {k: float(top[k]) for k in RERANK_GRID}
     with open(RESULTS_DIR / "best_rerank.json", "w") as f:
         json.dump(best, f, indent=2)
-    print("best re-ranking:", best)
+    print(f"selected re-ranking: {best} (ndcg@10={top['ndcg@10']:.4f}, age@10={top['age@10']:.1f}, "
+          f"value_change@10={top['value_change@10']:+.3f})")
     return best
 
 
@@ -76,8 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         # keep best_config.json, retrain it once on the validation split, tune the re-ranking only
         with open(RESULTS_DIR / "best_config.json") as f:
             cfg = Config(**json.load(f))
-        fitted = fit(setup, feats, cfg, monitor=False, verbose=False)
-        tune_rerank(fitted, setup, feats, cfg.warm_mix)
+        tune_rerank(setup, feats, cfg)
         return 0
 
     rows, best, best_fit = [], -1.0, None
@@ -113,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     pd.DataFrame(best_fit.log).to_csv(RESULTS_DIR / "val_training_log.csv", index=False)
     print("best config:", config_dict(final))
 
-    tune_rerank(best_fit, setup, feats, final.warm_mix)
+    tune_rerank(setup, feats, final)
     return 0
 
 
