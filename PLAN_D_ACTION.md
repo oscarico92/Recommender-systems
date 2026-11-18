@@ -101,10 +101,10 @@ Priorités issues du test de la semaine 3 (voir les issues GitHub).
 ### Gautier et Mathis
 - [x] Biais d'âge : terme `age_weight` dans le re-ranking (`src/rerank.py`), branché dans l'API, Streamlit ("Youth focus") et `eval/run_experiments.py`. Sur le modèle servi, top 10 de 29,3 ans à 27,9 (w=0,5) et 26,7 (w=1)
 - [x] Biais de popularité : terme `mobility_weight` (pénalité sur log(1 + nombre de transferts passés)), même branchement
-- [ ] Choisir les poids sur la validation : `python -m src.tune --rerank-only` (écrit `eval/results/tuning_rerank.csv` et `best_rerank.json`), puis `python -m src.export_model` pour qu'ils deviennent les valeurs par défaut de l'API. Défaut actuel : 0 (aucun effet tant que ce n'est pas validé)
+- [ ] Choisir les poids sur la validation : `python -m src.tune --rerank-only` (3 seeds ; règle : le poids d'âge le plus fort dont le NDCG@10 reste à moins d'un écart-type du meilleur ; écrit `eval/results/tuning_rerank.csv` et `best_rerank.json`), puis `python -m eval.run_experiments`, puis `python -m src.export_model` pour qu'ils deviennent les valeurs par défaut de l'API. Défaut actuel : 0 (aucun effet tant que ce n'est pas validé)
 
 ### Hugo et Gautier
-- [x] Explications des nouveaux talents : les embeddings cold-start sont quasi colinéaires (6 dimensions portent 80 % de la variance, contre 25 pour LightGCN), donc le cosinus renvoyait toujours les mêmes recrues. Les nouveaux talents sont désormais expliqués par profil (même sous-poste, puis même poste, puis âge à la signature le plus proche) : paires distinctes dans le top 10 de 38 % à 72 %, même poste de 23 % à 90 %. Test : `tests/test_explanations.py`
+- [x] Explications des nouveaux talents : les embeddings cold-start sont quasi colinéaires (6 dimensions portent 80 % de la variance, contre 25 pour LightGCN), donc le cosinus renvoyait toujours les mêmes recrues. Les nouveaux talents sont désormais expliqués par une règle métier de profil, et non par la raison du classement du modèle (même sous-poste, puis même poste, puis âge à la signature le plus proche) : paires distinctes dans le top 10 de 38 % à 72 %, même poste de 23 % à 90 %. Test : `tests/test_explanations.py`
 - [ ] (constaté au passage) Liste principale : seulement 23 % des explications sont du même poste que le joueur recommandé
 
 ### Simon et Mathis

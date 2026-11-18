@@ -17,6 +17,7 @@ All z-scores are computed on the candidates left after the budget filter.
 """
 
 import numpy as np
+import pandas as pd
 
 N_CANDIDATES = 50
 
@@ -82,3 +83,17 @@ def merge_with_cold_slots(warm_rank: np.ndarray, cold_rank: np.ndarray, cold_slo
     out[:, is_cold] = cold_rank[:, : is_cold.sum()]
     out[:, ~is_cold] = warm_rank[:, : (~is_cold).sum()]
     return out
+
+
+def select_rerank(table: pd.DataFrame) -> pd.Series:
+    """Selection rule for the re-ranking weights.
+
+    Keeping the best NDCG@10 alone would probably keep age_weight = 0: a
+    younger list does not have to be more accurate. The rule is therefore:
+    1. tolerance = the seed standard deviation of the best NDCG@10
+    2. keep the settings whose mean NDCG@10 >= best - tolerance
+    3. among them, take the strongest age_weight, then the best NDCG@10
+    """
+    best = table.loc[table["ndcg@10"].idxmax()]
+    ok = table[table["ndcg@10"] >= best["ndcg@10"] - best["ndcg@10_std"]]
+    return ok.sort_values(["age_weight", "ndcg@10"], ascending=[False, False]).iloc[0]
