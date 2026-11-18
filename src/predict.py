@@ -167,6 +167,8 @@ class Recommender:
         the player's profile, so the explanation compares profiles instead:
         same sub-position first, then same position, then closest age at
         signing. The embedding similarity only breaks ties.
+        This is a business rule shown to the user ("same profile as your
+        signings"), not an explanation of why the model ranked the player.
         """
         known = recent.dropna(subset=["position", "age_at_signing"])
         if known.empty:

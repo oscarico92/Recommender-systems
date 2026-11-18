@@ -2,6 +2,7 @@
 
 Endpoints
 - GET  /health
+- GET  /config                   model version and default re-ranking weights
 - GET  /clubs                    clubs that can ask for recommendations
 - GET  /recommend?club_id=985    top players for a club (real model)
 - POST /log_interaction          a user action on a recommended player
@@ -37,6 +38,22 @@ def health() -> dict:
     return {"status": "ok", "model_loaded": (SERVING_DIR / "embeddings.npz").exists()}
 
 
+DEFAULT_RESALE_WEIGHT = 0.5
+
+
+@app.get("/config")
+def config() -> dict:
+    """Defaults used by /recommend when a parameter is not given (tuned on validation)."""
+    rec = get_recommender()
+    return {
+        "model_version": rec.config.get("model_version"),
+        "resale_weight": DEFAULT_RESALE_WEIGHT,
+        "age_weight": float(rec.config.get("age_weight", 0.0)),
+        "mobility_weight": float(rec.config.get("mobility_weight", 0.0)),
+        "cold_slots": int(rec.config.get("cold_slots", 0)),
+    }
+
+
 @app.get("/clubs")
 def clubs() -> list[dict]:
     rec = get_recommender()
@@ -49,7 +66,7 @@ def recommend(
     club_id: int,
     k: int = Query(10, ge=1, le=50),
     budget_eur: float | None = Query(None, gt=0, description="Defaults to the club's usual budget"),
-    resale_weight: float = Query(0.5, ge=0, le=3, description="Weight of the 12-month value trend"),
+    resale_weight: float = Query(DEFAULT_RESALE_WEIGHT, ge=0, le=3, description="Weight of the 12-month value trend"),
     age_weight: float | None = Query(None, ge=0, le=3, description="Penalty on age (corrects the age bias). Defaults to the value tuned on validation"),
     mobility_weight: float | None = Query(None, ge=0, le=3, description="Penalty on players who changed club often. Defaults to the value tuned on validation"),
     cold_slots: int | None = Query(None, ge=0, le=5, description="Places of the top 10 for players unknown to the graph"),
