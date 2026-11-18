@@ -17,6 +17,10 @@ import pandas as pd
 from src.config import SERVING_DIR
 from src.rerank import merge_with_cold_slots, rerank_group
 
+# Strength of the serving-time feedback update (see club_query). Checked in
+# eval/feedback_check.py and eval/feedback_offline_check.py.
+FEEDBACK_STRENGTH = 0.25
+
 
 @dataclass
 class Recommender:
@@ -57,6 +61,31 @@ class Recommender:
         self._trend = self.players["value_trend"].to_numpy(float)
         self._position = self.players["position"].to_numpy()
 
+    def club_query(self, ci: int, liked_ids=None, disliked_ids=None, strength: float = FEEDBACK_STRENGTH) -> np.ndarray:
+        """Club vector moved toward the players it liked and away from the dismissed ones.
+
+        Rocchio update, applied at serving time: c + strength * |c| * (mean of
+        the unit embeddings of liked players - mean of the dismissed ones).
+        Players similar to a shortlisted one move up at once, without retraining.
+        """
+        c = self.club_emb[ci]
+        if strength <= 0 or not (liked_ids or disliked_ids):
+            return c
+        direction = np.zeros_like(c)
+        for ids, sign in ((liked_ids, 1.0), (disliked_ids, -1.0)):
+            if ids:
+                vecs = self._unit_embeddings(ids)
+                if len(vecs):
+                    direction += sign * vecs.mean(0)
+        return c + strength * np.linalg.norm(c) * direction
+
+    def _unit_embeddings(self, ids) -> np.ndarray:
+        mask = np.isin(self._player_ids, list(ids))
+        if not mask.any():
+            return np.zeros((0, self.club_emb.shape[1]))
+        emb = np.where(self.in_graph[mask, None], self.warm_emb[mask], self.cold_emb[mask])
+        return emb / (np.linalg.norm(emb, axis=1, keepdims=True) + 1e-9)
+
     def club_list(self) -> list[dict]:
         return self.clubs.to_dict(orient="records")
 
@@ -69,6 +98,10 @@ class Recommender:
         cold_slots: int | None = None,
         position: str | None = None,
         only_new: bool = False,
+        exclude_ids: set[int] | None = None,
+        liked_ids: set[int] | None = None,
+        disliked_ids: set[int] | None = None,
+        feedback_strength: float = FEEDBACK_STRENGTH,
     ) -> list[dict]:
         """Top k players for a club.
 
@@ -84,11 +117,13 @@ class Recommender:
         cold_slots = self.config.get("cold_slots", 0) if cold_slots is None else cold_slots
         length = max(k, 10)
 
-        c = self.club_emb[ci]
+        c = self.club_query(ci, liked_ids, disliked_ids, feedback_strength)
         past = self.history[self.history["club_id"] == club_id]
         banned = np.isin(self._player_ids, past["player_id"].to_numpy()) | (self._player_club == club_id)
         if position:
             banned |= self._position != position
+        if exclude_ids:
+            banned |= np.isin(self._player_ids, list(exclude_ids))
 
         s_warm = np.where(self.in_graph & ~banned, self.warm_emb @ c, -np.inf)
         s_cold = np.where(~self.in_graph & ~banned, self.cold_emb @ c, -np.inf)
