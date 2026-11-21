@@ -60,11 +60,19 @@ The trained model is versioned in `models/serving/`, so running the app needs ne
    streamlit run app/streamlit_app.py
    ```
 
-   It opens http://localhost:8501. Pick a club, adjust the budget, the resale focus and the number of places for new talents. "Shortlist" and "Dismiss" are saved through `/log_interaction` into `data/scoutai.db` (SQLite) and listed at the bottom of the page.
+   It opens http://localhost:8501. Pick a club, adjust the budget, the resale focus and the number of places for new talents. "Shortlist" and "Dismiss" are saved through `/log_interaction` into `data/scoutai.db` (SQLite) and listed at the bottom of the page. After a successful save, both recommendation lists refresh and the player disappears from the suggestions.
+
+   The budget is compared with estimated market values, not transfer fees. If too few of the model's candidates fit the budget, more expensive players complete the list; the page marks them "Above budget". The explanation panel distinguishes recruitment similarity from profile comparisons for new talents.
+
+   If a request fails, the page shows a retry message. A failed history request does not mean that the database is empty. If saving an action times out, check the history before clicking again: the server may have saved it before the connection was lost.
 
 To reach the app from another machine on the same network, start the API with `--host 0.0.0.0`, then run `SCOUTAI_API_URL=http://<api-ip>:8000 streamlit run app/streamlit_app.py`.
 
 Run the tests with `python -m pytest -q`.
+
+For a rehearsal with a separate database, set `SCOUTAI_DB_PATH` when starting the API (for example `SCOUTAI_DB_PATH=data/rehearsal.db uvicorn api.main:app --port 8000` on macOS/Linux). Use a new filename for a fresh rehearsal. The model stays the same, but previous test clicks do not affect the lists.
+
+The system walkthrough and demo steps are in [docs/systems_engineer_notes.md](docs/systems_engineer_notes.md). The API and page tests use temporary databases and do not add actions to your demo database.
 
 ## Re-train the model (optional, about 30 minutes on a laptop CPU)
 
@@ -92,7 +100,7 @@ The player features (`src/features.py`) are built automatically at each cutoff a
 - **Cold-start encoder**: an MLP maps 48 player features (age, position, height, market value and its trend, minutes, goals and assists per 90, European games, league, nationality) to the LightGCN embedding space, trained by distillation on the players that are in the graph. It scores players who have never been transferred.
 - **Two lists**: the main list is ranked by LightGCN. The "new talents" list ranks, with the encoder, the players unknown to the graph (no recruitment by a club of the 10 leagues in the last 10 years). The user can also give a few places of the main list to new talents (`cold_slots`, 0 by default because it lowered NDCG@10 on the validation season).
 - **Re-ranking**: the 50 best candidates are filtered by the club's budget (90th percentile of the values it recruited in the last 3 years, or the user's value), then re-ordered using the 12-month market value trend and penalties for age and frequent past moves. Weights are chosen on validation over 3 seeds and stored in `eval/results/best_rerank.json`.
-- **Explanations**: the club's recent signings closest to the recommended player in the embedding space.
+- **Explanations**: for the main list, past signings in the same position come first and are ordered by embedding similarity; other positions fill any remaining places. For new talents, the comparison uses position and age at signing, with a small embedding-similarity term. These are reference players to help read the list, not a causal explanation of the model's ranking.
 - **Feedback loop**: "Shortlist" and "Dismiss" are logged by `/log_interaction`. At once, `/recommend` hides these players and moves the club vector toward the shortlisted ones and away from the dismissed ones (Rocchio update), so similar players move up without retraining. On real recruitments of the validation season this does not improve NDCG@10 (0.0094 with and without), so it adapts the list to the scout rather than making it more accurate. Retraining with the feedback is also possible (`python -m src.export_model --feedback`) but its effect is within the run-to-run noise (see [data/README.md](data/README.md#5-app-feedback)).
 
 ## Evaluation
