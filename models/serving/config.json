@@ -15,8 +15,8 @@
   "hard_negative_max": 0.3,
   "seed": 0,
   "resale_weight": 1.0,
-  "age_weight": 1.0,
-  "mobility_weight": 0.5,
+  "age_weight": 2.0,
+  "mobility_weight": 0.0,
   "cutoff": "2026-07-01",
   "model_version": "lightgcn-2026-07-01"
 }

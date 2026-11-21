@@ -177,6 +177,11 @@ def main() -> int:
             lambda fi: reranked(replace_slots(fi, 0), setup, feats, 0.5, age_weight=1.0),
         "LightGCN + budget + resale 0.5 + mobility (w=0.5)":
             lambda fi: reranked(replace_slots(fi, 0), setup, feats, 0.5, mobility_weight=0.5),
+        "LightGCN + budget + resale 1.0 + age 1.0, no mobility":
+            lambda fi: reranked(replace_slots(fi, 0), setup, feats, 1.0, age_weight=1.0),
+        "LightGCN + budget + resale 1.0 + age 1.0 + mobility 0.5":
+            lambda fi: reranked(replace_slots(fi, 0), setup, feats, 1.0, age_weight=1.0,
+                                mobility_weight=0.5),
         f"LightGCN + budget + tuned re-ranking {_tuned_label()}":
             lambda fi: reranked(replace_slots(fi, 0), setup, feats, **_tuned_rerank()),
     }
