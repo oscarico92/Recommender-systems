@@ -105,7 +105,15 @@ Priorités issues du test de la semaine 3 (voir les issues GitHub).
 
 ### Hugo et Gautier
 - [x] Explications des nouveaux talents : les embeddings cold-start sont quasi colinéaires (6 dimensions portent 80 % de la variance, contre 25 pour LightGCN), donc le cosinus renvoyait toujours les mêmes recrues. Les nouveaux talents sont désormais expliqués par une règle métier de profil, et non par la raison du classement du modèle (même sous-poste, puis même poste, puis âge à la signature le plus proche) : paires distinctes dans le top 10 de 38 % à 72 %, même poste de 23 % à 90 %. Test : `tests/test_explanations.py`
-- [x] Liste principale (issue #7) : les recrues du même poste passent en premier (toujours classées par similarité d'embedding), complétées par les autres si le club en a moins de 2. Explications du même poste de 23 % à 95 %, paires distinctes de 74 % à 68 % (vivier plus petit). Test : `tests/test_explanations.py`
+- [x] Liste principale (issue #7) : les recrues du même poste passent en premier (toujours classées par similarité d'embedding), complétées par les autres si le club en a moins de 2. Vérification avec les réglages finaux (revente 1, âge 2, mobilité 0) : explications du même poste de 24,35 % à 95,05 %, paires distinctes de 74,19 % à 70 %. Classements inchangés sur les 322 clubs. Test : `tests/test_explanations.py`
+
+### Hugo : vérification du système
+- [x] Après Shortlist ou Dismiss, recharger les deux listes pour appliquer le feedback immédiatement dans l'interface
+- [x] Signaler les joueurs hors budget et distinguer les comparaisons de profils des similarités de recrutement
+- [x] Gérer les erreurs API dans la page, sans confondre un historique indisponible avec un historique vide
+- [x] Tester le parcours page / API / SQLite avec une base temporaire : `tests/test_streamlit_app.py`, `tests/test_recommend_api.py`
+- [x] Préparer les étapes de démo et les notes de prise en main : `docs/systems_engineer_notes.md`
+- [ ] Relecture personnelle des changements et répétition de la partie système avant le showcase
 
 ### Simon et Mathis
 - [x] Feedback de l'app : mise à jour immédiate du vecteur du club dans l'API (Rocchio), réentraînement possible avec `python -m src.export_model --feedback`, vérification dans `eval/results/feedback_check.md`
