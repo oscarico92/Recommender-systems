@@ -174,14 +174,27 @@ class Recommender:
                 "within_budget": bool(p["value_eur"] <= budget),
                 "never_transferred": is_new,
                 "score": round(score, 4),
-                "similar_to": self._explain_profile(j, emb, recent) if is_new else self._explain(emb, recent),
+                "similar_to": self._explain_profile(j, emb, recent) if is_new else self._explain(emb, recent, position=p["position"]),
             })
         return out
 
-    def _explain(self, emb: np.ndarray, recent: pd.DataFrame, n: int = 2) -> list[dict]:
-        """The club's recent signings closest to the player in embedding space."""
+    def _explain(self, emb: np.ndarray, recent: pd.DataFrame, n: int = 2, position: str | None = None) -> list[dict]:
+        """The club's recent signings closest to the player in embedding space.
+
+        When `position` is given, signings of the same position come first
+        (closest in embedding space among them), and the list is completed
+        with the other signings only if the club has fewer than `n` of them.
+        Without this, only 23% of the main-list explanations shared the
+        player's position (issue #7).
+        """
         if recent.empty:
             return []
+        if position is not None and "position" in recent:
+            same = recent[recent["position"] == position]
+            out = self._explain(emb, same, n) if len(same) else []
+            if len(out) < n:
+                out += self._explain(emb, recent[recent["position"] != position], n - len(out))
+            return out
         idx = [self._graph_pos[p] for p in recent["player_id"]]
         g = self.graph_emb[idx]
         sim = g @ emb / (np.linalg.norm(g, axis=1) * np.linalg.norm(emb) + 1e-9)
