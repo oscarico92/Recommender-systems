@@ -60,6 +60,18 @@ class Recommender:
         self._value = self.players["value_eur"].to_numpy(float)
         self._trend = self.players["value_trend"].to_numpy(float)
         self._position = self.players["position"].to_numpy()
+        self._sub_position = self.players["sub_position"].to_numpy()
+        self._age = self.players["age"].to_numpy(float)
+        # number of past moves between the selected clubs, used by the mobility penalty
+        moves = self.history.groupby("player_id").size()
+        self._moves = moves.reindex(self._player_ids).fillna(0).to_numpy(float)
+        # profile of the past signings (position, age at signing) for the explanations
+        cutoff = pd.Timestamp(self.config.get("cutoff", self.history["transfer_date"].max()))
+        meta = self.players.set_index("player_id")[["position", "sub_position", "age"]]
+        meta = meta[~meta.index.duplicated()]
+        h = self.history.join(meta, on="player_id")
+        h["age_at_signing"] = h["age"] - (cutoff - h["transfer_date"]).dt.days / 365.25
+        self.history = h.drop(columns="age")
 
     def club_query(self, ci: int, liked_ids=None, disliked_ids=None, strength: float = FEEDBACK_STRENGTH) -> np.ndarray:
         """Club vector moved toward the players it liked and away from the dismissed ones.
@@ -95,6 +107,8 @@ class Recommender:
         k: int = 10,
         budget: float | None = None,
         resale_weight: float = 0.0,
+        age_weight: float = 0.0,
+        mobility_weight: float = 0.0,
         cold_slots: int | None = None,
         position: str | None = None,
         only_new: bool = False,
@@ -127,8 +141,9 @@ class Recommender:
 
         s_warm = np.where(self.in_graph & ~banned, self.warm_emb @ c, -np.inf)
         s_cold = np.where(~self.in_graph & ~banned, self.cold_emb @ c, -np.inf)
-        warm = rerank_group(s_warm, self._value, self._trend, budget, resale_weight, length)
-        cold = rerank_group(s_cold, self._value, self._trend, budget, resale_weight, length)
+        extra = dict(age=self._age, age_weight=age_weight, moves=self._moves, mobility_weight=mobility_weight)
+        warm = rerank_group(s_warm, self._value, self._trend, budget, resale_weight, length, **extra)
+        cold = rerank_group(s_cold, self._value, self._trend, budget, resale_weight, length, **extra)
         if only_new:
             ranked = cold[:k]
         else:
@@ -159,7 +174,7 @@ class Recommender:
                 "within_budget": bool(p["value_eur"] <= budget),
                 "never_transferred": is_new,
                 "score": round(score, 4),
-                "similar_to": self._explain(emb, recent),
+                "similar_to": self._explain_profile(j, emb, recent) if is_new else self._explain(emb, recent),
             })
         return out
 
@@ -174,6 +189,37 @@ class Recommender:
         rows = recent.iloc[best]
         return [
             {"player_id": int(r.player_id), "name": r.player_name, "year": int(r.transfer_date.year),
-             "similarity": round(float(sim[b]), 3)}
+             "similarity": round(float(sim[b]), 3), "basis": "embedding"}
             for b, r in zip(best, rows.itertuples())
+        ]
+
+    def _explain_profile(self, j: int, emb: np.ndarray, recent: pd.DataFrame, n: int = 2) -> list[dict]:
+        """Explanation for a player unknown to the graph.
+
+        The cold-start embeddings are close to each other (most of their
+        variance is in a handful of directions), so the embedding similarity
+        picks the same signings for every new talent. The encoder only sees
+        the player's profile, so the explanation compares profiles instead:
+        same sub-position first, then same position, then closest age at
+        signing. The embedding similarity only breaks ties.
+        This is a business rule shown to the user ("same profile as your
+        signings"), not an explanation of why the model ranked the player.
+        """
+        known = recent.dropna(subset=["position", "age_at_signing"])
+        if known.empty:
+            return self._explain(emb, recent, n)
+        g = self.graph_emb[[self._graph_pos[p] for p in known["player_id"]]]
+        sim = g @ emb / (np.linalg.norm(g, axis=1) * np.linalg.norm(emb) + 1e-9)
+        score = (
+            2.0 * (known["sub_position"].to_numpy() == self._sub_position[j])
+            + 1.0 * (known["position"].to_numpy() == self._position[j])
+            - np.abs(known["age_at_signing"].to_numpy(float) - self._age[j]) / 3.0
+            + 0.1 * sim
+        )
+        best = np.argsort(-score, kind="stable")[:n]
+        return [
+            {"player_id": int(r.player_id), "name": r.player_name, "year": int(r.transfer_date.year),
+             "similarity": round(float(sim[b]), 3), "basis": "profile",
+             "sub_position": r.sub_position, "age_at_signing": round(float(r.age_at_signing), 1)}
+            for b, r in zip(best, known.iloc[best].itertuples())
         ]

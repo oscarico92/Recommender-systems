@@ -10,7 +10,13 @@
   "patience": 6,
   "warm_mix": 0.0,
   "cold_slots": 0,
+  "loan_weight": 1.0,
+  "hard_negative_rate": 0.05,
+  "hard_negative_max": 0.3,
   "seed": 0,
+  "resale_weight": 1.0,
+  "age_weight": 2.0,
+  "mobility_weight": 0.0,
   "cutoff": "2026-07-01",
   "model_version": "lightgcn-2026-07-01"
 }

@@ -24,6 +24,18 @@ def get_clubs() -> pd.DataFrame:
     return pd.DataFrame(r.json())
 
 
+@st.cache_data(ttl=600)
+def get_defaults() -> dict:
+    """Default weights of the API (tuned on validation), so the sliders start from them."""
+    fallback = {"resale_weight": 0.5, "age_weight": 0.0, "mobility_weight": 0.0, "cold_slots": 0}
+    try:
+        r = requests.get(f"{API}/config", timeout=5)
+        r.raise_for_status()
+        return {**fallback, **r.json()}
+    except requests.RequestException:
+        return fallback
+
+
 def log(club_id: int, player_id: int, action: str, rank: int, model_version: str | None) -> None:
     payload = {"club_id": club_id, "player_id": player_id, "action": action, "rank": rank,
                "model_version": model_version}
@@ -39,6 +51,7 @@ try:
 except requests.RequestException:
     st.error(f"The API is not reachable on {API}. Start it with `uvicorn api.main:app`.")
     st.stop()
+defaults = get_defaults()
 
 labels = {f"{r.club_name} ({r.league_id})": r.club_id for r in clubs.itertuples()}
 default = next((i for i, lab in enumerate(labels) if lab.startswith("Manchester United")), 0)
@@ -50,14 +63,20 @@ with st.sidebar:
     usual = float(clubs.set_index("club_id").loc[club_id, "budget_eur"])
     budget_m = st.slider("Budget per player (M EUR)", 0.5, 150.0, round(max(usual / 1e6, 0.5), 1), 0.5,
                          help="Defaults to what the club usually pays (90th percentile, last 3 years).")
-    resale = st.slider("Resale focus", 0.0, 2.0, 0.5, 0.1,
+    resale = st.slider("Resale focus", 0.0, 2.0, float(defaults["resale_weight"]), 0.1,
                        help="Favours players whose market value went up in the last 12 months.")
-    cold = st.slider("Places for new talents in the main list", 0, 3, 0,
+    youth = st.slider("Youth focus", 0.0, 2.0, float(defaults["age_weight"]), 0.1,
+                      help="Pushes younger players up. The raw model favours players of 28-30, "
+                           "clubs actually sign players of about 24.5.")
+    mobility = st.slider("Penalty for frequent movers", 0.0, 2.0, float(defaults["mobility_weight"]), 0.1,
+                         help="Pushes down players who changed club many times.")
+    cold = st.slider("Places for new talents in the main list", 0, 3, min(int(defaults["cold_slots"]), 3),
                      help="0 gives the most accurate list. The new talents are also shown below.")
     position = st.selectbox("Position", ["All", "Goalkeeper", "Defender", "Midfield", "Attack"])
     k = st.slider("Number of players", 5, 20, 10)
 
-params = {"club_id": club_id, "k": k, "budget_eur": budget_m * 1e6, "resale_weight": resale, "cold_slots": cold}
+params = {"club_id": club_id, "k": k, "budget_eur": budget_m * 1e6, "resale_weight": resale,
+          "age_weight": youth, "mobility_weight": mobility, "cold_slots": cold}
 if position != "All":
     params["position"] = position
 
@@ -87,7 +106,10 @@ def card(rec: dict, data: dict, section: str) -> None:
                    f"{(pow(2.718281828, trend) - 1) * 100:+.0f}% in 12 months")
         if rec["similar_to"]:
             sims = ", ".join(f"{s['name']} ({s['year']})" for s in rec["similar_to"])
-            left.caption(f"Similar to your signings: {sims}")
+            if rec["similar_to"][0].get("basis") == "profile":
+                left.caption(f"Same profile as your signings: {sims}")
+            else:
+                left.caption(f"Similar to your signings: {sims}")
         if right.button("Shortlist", key=f"{section}s{rec['player_id']}"):
             log(club_id, rec["player_id"], "shortlisted", rec["rank"], data["model_version"])
         if right.button("Dismiss", key=f"{section}d{rec['player_id']}"):
