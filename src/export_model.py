@@ -29,7 +29,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--feedback", action="store_true", help="also train on the actions logged in the app")
     parser.add_argument("--db", default=str(DB_PATH), help="SQLite file of the logged actions")
     args = parser.parse_args(argv)
-
     with open(RESULTS_DIR / "best_config.json") as f:
         cfg = Config(**json.load(f))
     inter = load_interactions()
@@ -79,10 +78,11 @@ def main(argv: list[str] | None = None) -> int:
     rerank = {}
     if (RESULTS_DIR / "best_rerank.json").exists():
         with open(RESULTS_DIR / "best_rerank.json") as f:
-            rerank = {k: v for k, v in json.load(f).items() if k in ("age_weight", "mobility_weight")}
+            rerank = {k: v for k, v in json.load(f).items()
+                      if k in ("resale_weight", "age_weight", "mobility_weight")}
     with open(SERVING_DIR / "config.json", "w") as f:
         json.dump({**cfg.__dict__, **rerank, "cutoff": SERVING_CUTOFF,
-                   "model_version": f"lightgcn-{SERVING_CUTOFF}"}, f, indent=2)
+                   "model_version": version}, f, indent=2)
     print(f"exported {len(clubs)} clubs, {len(players)} players to {SERVING_DIR}")
     return 0
 

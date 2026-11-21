@@ -49,7 +49,7 @@ def config() -> dict:
     rec = get_recommender()
     return {
         "model_version": rec.config.get("model_version"),
-        "resale_weight": DEFAULT_RESALE_WEIGHT,
+        "resale_weight": float(rec.config.get("resale_weight", DEFAULT_RESALE_WEIGHT)),
         "age_weight": float(rec.config.get("age_weight", 0.0)),
         "mobility_weight": float(rec.config.get("mobility_weight", 0.0)),
         "cold_slots": int(rec.config.get("cold_slots", 0)),
@@ -68,7 +68,7 @@ def recommend(
     club_id: int,
     k: int = Query(10, ge=1, le=50),
     budget_eur: float | None = Query(None, gt=0, description="Defaults to the club's usual budget"),
-    resale_weight: float = Query(DEFAULT_RESALE_WEIGHT, ge=0, le=3, description="Weight of the 12-month value trend"),
+    resale_weight: float | None = Query(None, ge=0, le=3, description="Weight of the 12-month value trend. Defaults to the value tuned on validation"),
     age_weight: float | None = Query(None, ge=0, le=3, description="Penalty on age (corrects the age bias). Defaults to the value tuned on validation"),
     mobility_weight: float | None = Query(None, ge=0, le=3, description="Penalty on players who changed club often. Defaults to the value tuned on validation"),
     cold_slots: int | None = Query(None, ge=0, le=5, description="Places of the top 10 for players unknown to the graph"),
@@ -91,13 +91,16 @@ def recommend(
     liked = {p for p, a in last.items() if a in ("shortlisted", "signed")}
     disliked = {p for p, a in last.items() if a == "dismissed"}
     try:
+        if resale_weight is None:
+            resale_weight = float(rec.config.get("resale_weight", DEFAULT_RESALE_WEIGHT))
         if age_weight is None:
             age_weight = float(rec.config.get("age_weight", 0.0))
         if mobility_weight is None:
             mobility_weight = float(rec.config.get("mobility_weight", 0.0))
         items = rec.recommend(club_id, k=k, budget=budget_eur, resale_weight=resale_weight,
                               age_weight=age_weight, mobility_weight=mobility_weight,
-                              cold_slots=cold_slots, position=position, only_new=new_talents)
+                              cold_slots=cold_slots, position=position, only_new=new_talents,
+                              exclude_ids=liked | disliked, liked_ids=liked, disliked_ids=disliked)
     except KeyError:
         raise HTTPException(404, f"Unknown club_id {club_id}. See /clubs.")
     club = rec.clubs[rec.clubs["club_id"] == club_id].iloc[0]
@@ -106,6 +109,7 @@ def recommend(
         "club_name": club["club_name"],
         "budget_eur": budget_eur if budget_eur is not None else float(club["budget_eur"]),
         "model_version": rec.config.get("model_version"),
+        "resale_weight": resale_weight,
         "age_weight": age_weight,
         "mobility_weight": mobility_weight,
         "latency_ms": round((time.perf_counter() - start) * 1000, 1),

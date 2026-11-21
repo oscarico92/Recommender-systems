@@ -120,6 +120,34 @@ def fmt(mean: float, std: float | None = None) -> str:
     return f"{mean:.4f}" if std is None or std == 0 else f"{mean:.4f} ± {std:.4f}"
 
 
+def stability_report(top10: list[np.ndarray], gaps: list[float], setup: EvalSetup) -> None:
+    """Compare individual club lists across seeds without another training run."""
+    pairs = []
+    for a in range(len(top10)):
+        for b in range(a + 1, len(top10)):
+            overlap = np.array([len(set(x) & set(y)) / 10 for x, y in zip(top10[a], top10[b])])
+            pairs.append((SEEDS[a], SEEDS[b], float(overlap.mean()), float(np.median(overlap))))
+    valid_gaps = np.asarray(gaps, dtype=float)
+    valid_gaps = valid_gaps[np.isfinite(valid_gaps)]
+    lines = ["# Stability between training seeds", "",
+             f"Test cutoff {TEST_START}; {len(setup.club_ids)} clubs; config from validation; "
+             f"tuned re-ranking {_tuned_label()}. Same train/test split for all seeds.", "",
+             "Overlap is the number of shared players in two top-10 lists divided by 10, "
+             "averaged across clubs. It measures list stability, not ranking quality.", "",
+             "| Seeds | Mean overlap | Median club overlap |", "| --- | ---: | ---: |"]
+    lines += [f"| {a} vs {b} | {mean:.1%} | {median:.1%} |" for a, b, mean, median in pairs]
+    lines += ["", f"Mean pairwise overlap: {np.mean([p[2] for p in pairs]):.1%}.", "",
+              "## Score gaps", "",
+              f"Warm model score gap between ranks 10 and 11: median {np.median(valid_gaps):.6g}, "
+              f"10th percentile {np.percentile(valid_gaps, 10):.6g}, "
+              f"90th percentile {np.percentile(valid_gaps, 90):.6g} "
+              f"({len(valid_gaps)} club-seed pairs). Small gaps make the boundary sensitive "
+              "to changes in embeddings; this is descriptive, not a causal test.", "",
+              "The issue #5 figure used the served model at the 2026-07-01 cutoff. "
+              "These results use the test cutoff, so they are a comparable diagnostic rather than a replication."]
+    (RESULTS_DIR / "seed_stability.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     with open(RESULTS_DIR / "best_config.json") as f:
         cfg = Config(**json.load(f))
@@ -158,10 +186,17 @@ def main() -> int:
         "Highest market value": [new_talents(setup, market_value_scores(setup))],
     }
     fitted_seed0 = None
+    seed_top10 = []
+    seed_score_gaps = []
     for seed in SEEDS:
         fi = fit(setup, feats, replace(cfg, seed=seed), monitor=False, verbose=False)
         if seed == 0:
             fitted_seed0 = fi
+        seed_top10.append(reranked(replace_slots(fi, 0), setup, feats, **_tuned_rerank())[:, :10])
+        scores = mask_scores(setup, fi.club_emb @ item_embeddings(fi, "hybrid").T)
+        scores[:, ~fi.in_graph] = -np.inf
+        best_scores = np.sort(scores, axis=1)[:, ::-1]
+        seed_score_gaps.extend((best_scores[:, 9] - best_scores[:, 10]).tolist())
         for name, fn in variants.items():
             rows.setdefault(name, []).append(evaluate(setup, None, ranked=fn(fi)))
         enc_scores = fi.club_emb @ fi.item_emb_enc.T
@@ -175,6 +210,7 @@ def main() -> int:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     table.to_csv(RESULTS_DIR / "test_results.csv", index=False)
     cold_table.to_csv(RESULTS_DIR / "test_results_new_talents.csv", index=False)
+    stability_report(seed_top10, seed_score_gaps, setup)
 
     lines = [
         f"# Test results (season 2025/26, cutoff {TEST_START})",
@@ -199,7 +235,7 @@ def main() -> int:
         "",
         *markdown(cold_table, cold_metrics),
     ]
-    (RESULTS_DIR / "test_results.md").write_text("\n".join(lines) + "\n")
+    (RESULTS_DIR / "test_results.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
 
     case_studies(fitted_seed0, setup, feats)
@@ -208,9 +244,9 @@ def main() -> int:
 
 
 def case_studies(fi, setup: EvalSetup, feats: pd.DataFrame) -> None:
-    ranked = reranked(fi, setup, feats, 0.5)
+    ranked = reranked(fi, setup, feats, **_tuned_rerank())
     idx = setup.club_index
-    out = [f"# Case studies (test cutoff {TEST_START}, full model, resale weight 0.5)", "",
+    out = [f"# Case studies (test cutoff {TEST_START}, tuned re-ranking {_tuned_label()})", "",
            "A star marks a player the club actually signed after the cutoff. 'new' marks a player "
            "unknown to the graph at the cutoff (cold start).", ""]
     for club_id, name in CASE_CLUBS.items():
@@ -239,7 +275,7 @@ def case_studies(fi, setup: EvalSetup, feats: pd.DataFrame) -> None:
             + (" **signed**" if feats.iloc[j]['player_id'] in signed else "") for j in new)]
         actual = feats[feats["player_id"].isin(signed)]["name"].head(12).tolist()
         out += ["", "Actual signings in the catalogue: " + (", ".join(actual) if actual else "none"), ""]
-    (RESULTS_DIR / "case_studies.md").write_text("\n".join(out) + "\n")
+    (RESULTS_DIR / "case_studies.md").write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
 def loss_figure() -> None:
