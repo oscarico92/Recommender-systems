@@ -105,7 +105,7 @@ Priorités issues du test de la semaine 3 (voir les issues GitHub).
 
 ### Hugo et Gautier
 - [x] Explications des nouveaux talents : les embeddings cold-start sont quasi colinéaires (6 dimensions portent 80 % de la variance, contre 25 pour LightGCN), donc le cosinus renvoyait toujours les mêmes recrues. Les nouveaux talents sont désormais expliqués par une règle métier de profil, et non par la raison du classement du modèle (même sous-poste, puis même poste, puis âge à la signature le plus proche) : paires distinctes dans le top 10 de 38 % à 72 %, même poste de 23 % à 90 %. Test : `tests/test_explanations.py`
-- [ ] (constaté au passage) Liste principale : seulement 23 % des explications sont du même poste que le joueur recommandé
+- [x] Liste principale (issue #7) : les recrues du même poste passent en premier (toujours classées par similarité d'embedding), complétées par les autres si le club en a moins de 2. Explications du même poste de 23 % à 95 %, paires distinctes de 74 % à 68 % (vivier plus petit). Test : `tests/test_explanations.py`
 
 ### Simon et Mathis
 - [x] Feedback de l'app : mise à jour immédiate du vecteur du club dans l'API (Rocchio), réentraînement possible avec `python -m src.export_model --feedback`, vérification dans `eval/results/feedback_check.md`

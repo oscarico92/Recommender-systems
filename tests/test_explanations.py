@@ -49,3 +49,17 @@ def test_config_endpoint_matches_recommend_defaults(rec):
     cfg = client.get("/config").json()
     out = client.get("/recommend", params={"club_id": int(rec.clubs["club_id"].iloc[0])}).json()
     assert out["age_weight"] == cfg["age_weight"] and out["mobility_weight"] == cfg["mobility_weight"]
+
+
+def test_main_list_explained_by_same_position(rec):
+    """Issue #7: main-list explanations rarely shared the player's position (23%)."""
+    pos = dict(zip(rec.players["player_id"], rec.players["position"]))
+    same = total = 0
+    for club_id in rec.clubs["club_id"].head(40):
+        for o in rec.recommend(int(club_id), k=10):
+            if o["never_transferred"]:
+                continue
+            for s in o["similar_to"]:
+                total += 1
+                same += pos.get(s["player_id"]) == o["position"]
+    assert total and same / total > 0.8
