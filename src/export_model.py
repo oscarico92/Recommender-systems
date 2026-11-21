@@ -1,7 +1,8 @@
 """Train the served model on all the data and export it for the API.
 
 Usage:
-    python -m src.export_model
+    python -m src.export_model               # transfers only
+    python -m src.export_model --feedback    # + actions logged in the app (src/feedback.py)
 
 Uses the hyperparameters of eval/results/best_config.json, all the
 interactions before SERVING_CUTOFF, and the player features at that date.
@@ -9,6 +10,7 @@ Writes models/serving/ (a few MB, committed so that the app runs without
 training). The API only needs numpy and pandas to read it.
 """
 
+import argparse
 import json
 import sys
 
@@ -16,19 +18,32 @@ import numpy as np
 import pandas as pd
 
 from eval.harness import build_setup
-from src.config import RESULTS_DIR, SERVING_CUTOFF, SERVING_DIR
+from src.config import DB_PATH, RESULTS_DIR, SERVING_CUTOFF, SERVING_DIR
 from src.features import _raw, load_or_build
 from src.split import load_interactions
 from src.train import Config, fit, item_embeddings
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--feedback", action="store_true", help="also train on the actions logged in the app")
+    parser.add_argument("--db", default=str(DB_PATH), help="SQLite file of the logged actions")
+    args = parser.parse_args(argv)
+
     with open(RESULTS_DIR / "best_config.json") as f:
         cfg = Config(**json.load(f))
     inter = load_interactions()
     feats = load_or_build(SERVING_CUTOFF)
     setup = build_setup(inter, feats, SERVING_CUTOFF, None)
-    fitted = fit(setup, feats, cfg, monitor=False, verbose=False)
+    feedback = None
+    version = f"lightgcn-{SERVING_CUTOFF}"
+    if args.feedback:
+        from src.feedback import load_feedback
+
+        feedback = load_feedback(args.db)
+        print(feedback.summary())
+        version += f"+feedback{feedback.n_actions}"
+    fitted = fit(setup, feats, cfg, monitor=False, verbose=False, feedback=feedback)
 
     clubs = pd.read_parquet(RESULTS_DIR.parents[1] / "data" / "processed" / "clubs.parquet")
     clubs = clubs.set_index("club_id").reindex(setup.club_ids).reset_index()
