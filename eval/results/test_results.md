@@ -1,6 +1,6 @@
 # Test results (season 2025/26, cutoff 2025-07-01)
 
-322 clubs, 17628 players in the catalogue, 2990 target recruitments (90.0% in the catalogue), 10549 catalogue players unknown to the graph at the cutoff. Mean ± std over 3 seeds. Config: `{"dim": 64, "layers": 2, "lr": 0.005, "reg": 0.0001, "years": 10, "epochs": 35, "batch": 2048, "eval_every": 5, "patience": 6, "warm_mix": 0.0, "cold_slots": 0, "seed": 0}`.
+322 clubs, 17628 players in the catalogue, 2990 target recruitments (90.0% in the catalogue), 10549 catalogue players unknown to the graph at the cutoff. Mean ± std over 3 seeds. Config: `{"dim": 64, "layers": 2, "lr": 0.005, "reg": 0.0001, "years": 10, "epochs": 35, "batch": 2048, "eval_every": 5, "patience": 6, "warm_mix": 0.0, "cold_slots": 0, "loan_weight": 1.0, "hard_negative_rate": 0.05, "hard_negative_max": 0.3, "seed": 0}`.
 
 ## Main list (all players)
 
@@ -9,13 +9,17 @@
 | Random | 0.0004 ± 0.0003 | 0.0016 ± 0.0006 | 0.0003 ± 0.0004 | 0.0001 ± 0.0002 | 0.1664 ± 0.0006 | 0.7846 ± 0.0081 | 0.0687 ± 0.0144 | 25.7278 ± 0.0402 |
 | Most popular (all history) | 0.0018 ± 0.0002 | 0.0026 ± 0.0002 | 0.0000 | 0.0021 ± 0.0003 | 0.0008 ± 0.0000 | 0.8048 ± 0.0006 | -0.4594 ± 0.0028 | 33.0637 ± 0.0363 |
 | Most popular (last 2 seasons) | 0.0017 ± 0.0003 | 0.0038 ± 0.0008 | 0.0000 | 0.0025 ± 0.0003 | 0.0007 | 0.4107 ± 0.0191 | -0.0586 ± 0.0876 | 24.6487 ± 0.5278 |
-| Highest market value | 0.0003 | 0.0009 | 0.0013 | 0.0000 | 0.0008 | 0.0000 | -0.1700 | 23.4355 |
+| Highest market value | 0.0003 | 0.0009 | 0.0013 | 0.0000 | 0.0008 | 0.0000 | -0.1697 | 23.4343 |
 | LightGCN alone | 0.0098 ± 0.0014 | 0.0173 ± 0.0036 | 0.0000 | 0.0123 ± 0.0016 | 0.0573 ± 0.0006 | 0.7587 ± 0.0020 | -0.2069 ± 0.0039 | 29.1457 ± 0.1531 |
-| Feature encoder alone | 0.0092 ± 0.0011 | 0.0179 ± 0.0027 | 0.0005 ± 0.0007 | 0.0106 ± 0.0011 | 0.0312 ± 0.0011 | 0.8066 ± 0.0210 | -0.2430 ± 0.0227 | 30.0211 ± 0.2002 |
-| LightGCN + 2 places for new players | 0.0104 ± 0.0013 | 0.0201 ± 0.0019 | 0.0054 ± 0.0007 | 0.0101 ± 0.0016 | 0.0543 ± 0.0009 | 0.7711 ± 0.0016 | -0.1965 ± 0.0074 | 28.9681 ± 0.0552 |
+| Feature encoder alone | 0.0099 ± 0.0002 | 0.0171 ± 0.0034 | 0.0009 ± 0.0013 | 0.0118 ± 0.0009 | 0.0309 ± 0.0005 | 0.8116 ± 0.0210 | -0.2427 ± 0.0128 | 30.0177 ± 0.1303 |
+| LightGCN + 2 places for new players | 0.0099 ± 0.0016 | 0.0207 ± 0.0018 | 0.0045 ± 0.0011 | 0.0100 ± 0.0015 | 0.0543 ± 0.0006 | 0.7728 ± 0.0058 | -0.1937 ± 0.0090 | 28.9318 ± 0.1433 |
 | LightGCN + budget re-ranking | 0.0108 ± 0.0017 | 0.0238 ± 0.0037 | 0.0000 | 0.0136 ± 0.0020 | 0.0575 ± 0.0003 | 0.9827 ± 0.0004 | -0.1993 ± 0.0044 | 29.5028 ± 0.1992 |
 | LightGCN + budget + resale (w=0.5) | 0.0117 ± 0.0010 | 0.0243 ± 0.0023 | 0.0000 | 0.0145 ± 0.0011 | 0.0594 ± 0.0003 | 0.9827 ± 0.0004 | -0.1552 ± 0.0095 | 28.9347 ± 0.1537 |
 | LightGCN + budget + resale (w=1.0) | 0.0125 ± 0.0027 | 0.0239 ± 0.0008 | 0.0000 | 0.0156 ± 0.0027 | 0.0597 ± 0.0007 | 0.9827 ± 0.0004 | -0.1121 ± 0.0110 | 28.4338 ± 0.0943 |
+| LightGCN + budget + resale 0.5 + age (w=0.5) | 0.0131 ± 0.0023 | 0.0245 ± 0.0036 | 0.0000 | 0.0160 ± 0.0027 | 0.0624 ± 0.0009 | 0.9827 ± 0.0004 | -0.0667 ± 0.0113 | 27.4520 ± 0.1431 |
+| LightGCN + budget + resale 0.5 + age (w=1.0) | 0.0152 ± 0.0027 | 0.0254 ± 0.0033 | 0.0000 | 0.0190 ± 0.0034 | 0.0627 ± 0.0014 | 0.9827 ± 0.0004 | -0.0063 ± 0.0174 | 26.3945 ± 0.1193 |
+| LightGCN + budget + resale 0.5 + mobility (w=0.5) | 0.0127 ± 0.0021 | 0.0233 ± 0.0022 | 0.0000 | 0.0153 ± 0.0024 | 0.0681 ± 0.0005 | 0.9827 ± 0.0004 | -0.0944 ± 0.0080 | 28.1531 ± 0.1286 |
+| LightGCN + budget + tuned re-ranking (resale 1.0, age 1.0, mobility 0.5) | 0.0162 ± 0.0025 | 0.0237 ± 0.0019 | 0.0000 | 0.0198 ± 0.0029 | 0.0664 ± 0.0017 | 0.9827 ± 0.0004 | 0.0218 ± 0.0115 | 26.1434 ± 0.1197 |
 
 Reference, players actually signed after the cutoff (2453 in the catalogue): mean age 24.5, mean value change +0.186. The whole catalogue: mean age 25.8, mean value change +0.061.
 
@@ -26,5 +30,5 @@ These players had no recruitment by a club of the 10 leagues in the 10 years bef
 | Model | ndcg@10 | coverage@10 | within_budget@10 | value_change@10 | age@10 |
 | --- | --- | --- | --- | --- | --- |
 | Random | 0.0006 ± 0.0006 | 0.1574 ± 0.0007 | 0.8742 ± 0.0049 | 0.1661 ± 0.0220 | 24.9481 ± 0.0930 |
-| Highest market value | 0.0067 | 0.0007 | 0.0165 | -0.0880 | 22.0232 |
-| Cold-start encoder (ours) | 0.0303 ± 0.0021 | 0.0187 ± 0.0006 | 0.8055 ± 0.0175 | 0.1003 ± 0.0217 | 24.7644 ± 0.3266 |
+| Highest market value | 0.0066 | 0.0007 | 0.0165 | -0.1235 | 21.8785 |
+| Cold-start encoder (ours) | 0.0314 ± 0.0010 | 0.0189 ± 0.0005 | 0.8134 ± 0.0080 | 0.1052 ± 0.0440 | 24.6333 ± 0.1846 |
