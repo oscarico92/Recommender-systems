@@ -34,7 +34,7 @@ from src.train import Config, config_dict, fit, ranking
 
 RERANK_GRID = {
     "resale_weight": [0.0, 0.5, 1.0],
-    "age_weight": [0.0, 0.25, 0.5, 1.0],
+    "age_weight": [0.0, 0.25, 0.5, 1.0, 1.5, 2.0],
     "mobility_weight": [0.0, 0.5],
 }
 

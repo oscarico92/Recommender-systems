@@ -104,7 +104,7 @@ The player features (`src/features.py`) are built automatically at each cutoff a
 
 ## Results (test season 2025/26)
 
-Full tables: [eval/results/test_results.md](eval/results/test_results.md). Mean ± standard deviation over 3 seeds, 322 clubs, 17,628 candidate players, 2,993 target recruitments.
+Full tables: [eval/results/test_results.md](eval/results/test_results.md). Mean ± standard deviation over 3 seeds, 322 clubs, 17,628 candidate players, 2,990 target recruitments.
 
 | Model | NDCG@10 | Recall@20 | Within budget | Value change of top 10 | Mean age of top 10 |
 | --- | --- | --- | --- | --- | --- |
@@ -113,10 +113,10 @@ Full tables: [eval/results/test_results.md](eval/results/test_results.md). Mean 
 | Most popular (last 2 seasons) | 0.0017 | 0.0038 | 41% | -0.06 | 24.6 |
 | Highest market value | 0.0003 | 0.0009 | 0% | -0.17 | 23.4 |
 | LightGCN alone | 0.0098 ± 0.0014 | 0.0173 ± 0.0036 | 76% | -0.21 | 29.1 |
-| Feature encoder alone | 0.0092 ± 0.0011 | 0.0179 ± 0.0027 | 81% | -0.24 | 30.0 |
+| Feature encoder alone | 0.0094 ± 0.0001 | 0.0161 ± 0.0036 | 81% | -0.23 | 30.0 |
 | LightGCN + budget re-ranking | 0.0108 ± 0.0017 | 0.0238 ± 0.0037 | **98%** | -0.20 | 29.5 |
 | LightGCN + budget + resale (w=1) | 0.0125 ± 0.0027 | 0.0239 ± 0.0008 | **98%** | -0.11 | 28.4 |
-| LightGCN + tuned resale, age and mobility | **0.0162 ± 0.0025** | 0.0237 ± 0.0019 | **98%** | +0.02 | 26.1 |
+| LightGCN + tuned re-ranking (resale 1, age 2, mobility 0) | 0.0162 ± 0.0024 | 0.0249 ± 0.0017 | **98%** | +0.04 | 25.6 |
 | *Players actually signed* | | | | *+0.19* | *24.5* |
 
 New talents list (players unknown to the graph, 60% of the catalogue):
@@ -124,21 +124,21 @@ New talents list (players unknown to the graph, 60% of the catalogue):
 | Model | NDCG@10 on their recruitments |
 | --- | --- |
 | Random | 0.0006 |
-| Highest market value | 0.0067 |
-| **Cold-start encoder** | **0.0303 ± 0.0021** |
+| Highest market value | 0.0066 |
+| **Cold-start encoder** | **0.0325 ± 0.0022** |
 
 What it shows:
 
 - **Beats the sanity floor.** LightGCN reaches 5 times the NDCG@10 of both most popular rankings (all history or last 2 seasons), with clearly separated standard deviations, and recommends 70 times more distinct players (coverage 5.7% against 0.08%).
 - **Budget compliance.** The budget re-ranking raises the share of affordable players from 76% to 98%.
-- **Cold start.** The encoder finds new talents 4.5 times better than "highest market value" and 50 times better than random.
-- **Accuracy.** The tuned age and mobility penalties raise mean test NDCG@10 from 0.0125 (resale alone, w=1) to 0.0162 over 3 seeds. The uncertainty across seeds remains substantial, so treat this as a small-sample result.
-- **Value change.** The tuned top 10 gains +0.02 in the following year, versus -0.11 with resale alone and +0.19 for players actually signed. Mean age falls from 28.4 to 26.1, still above the 24.5 of actual signings.
+- **Cold start.** The encoder finds new talents about 4.9 times better than "highest market value" and 54 times better than random.
+- **Accuracy on validation.** NDCG@10 is similar within one seed standard deviation: 0.0138 ± 0.0012 with resale alone (w=1), versus 0.0144 ± 0.0005 with the selected weights. The higher test NDCG@10 is an observation on three seeds, not a claimed accuracy gain.
+- **Age and value change.** The selected top 10 gains +0.04 in the following year, versus -0.11 with resale alone and +0.19 for players actually signed. Mean age falls from 28.4 to 25.6, still above the 24.5 of actual signings. The mobility penalty was tested but not selected by validation.
 - Absolute values are low because each club signs about 10 players among 17,628 candidates: a random ranking scores 0.0004.
 
-- **Run-to-run instability.** Two trainings that differ only by the seed share about 10 to 30% of a club's top 10, while the averaged metrics stay stable (± 0.0014 on NDCG@10 over 3 seeds). The lists shown in the demo and the case studies therefore depend on the training run. The committed model in `models/serving/` is the one used for the showcase. Tracked in issue oscarico92/Recommender-systems#5.
+- **Run-to-run instability.** Across 322 clubs at the test cutoff, two seeds share 35.0% of the players in their top 10 on average. The lists shown in the demo and the case studies therefore depend on the training run. The committed model in `models/serving/` is the one used for the showcase. Tracked in issue oscarico92/Recommender-systems#5.
 
-Known limits: the top 10 still varies strongly between training seeds (31.6% mean pairwise overlap on the test cutoff; [diagnostic](eval/results/seed_stability.md)), and new talents lists can include established stars who simply have not moved in 10 years. See the [case studies](eval/results/case_studies.md) and [training curves](docs/figures/loss_curves.png).
+Known limits: new talents lists can include established stars who simply have not moved in 10 years. See the [seed-stability diagnostic](eval/results/seed_stability.md), [case studies](eval/results/case_studies.md) and [training curves](docs/figures/loss_curves.png).
 
 ## Repository structure
 

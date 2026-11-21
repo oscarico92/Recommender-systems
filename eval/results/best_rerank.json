@@ -1,5 +1,5 @@
 {
   "resale_weight": 1.0,
-  "age_weight": 1.0,
-  "mobility_weight": 0.5
+  "age_weight": 2.0,
+  "mobility_weight": 0.0
 }
