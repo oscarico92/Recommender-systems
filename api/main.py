@@ -9,13 +9,15 @@ Endpoints
 - GET  /interactions             logged actions (to check the database)
 """
 
+import sqlite3
 import time
 from functools import lru_cache
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.interactions import get_db
 from api.interactions import router as interactions_router
 from src.config import SERVING_DIR
 
@@ -72,9 +74,22 @@ def recommend(
     cold_slots: int | None = Query(None, ge=0, le=5, description="Places of the top 10 for players unknown to the graph"),
     position: Literal["Goalkeeper", "Defender", "Midfield", "Attack"] | None = None,
     new_talents: bool = Query(False, description="Only players unknown to the graph (no recruitment by a selected club in 10 years), ranked by the cold-start encoder"),
+    conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     rec = get_recommender()
     start = time.perf_counter()
+    # feedback of the club in the app, used at once (no retraining needed):
+    # the last action on each player counts. Shortlisted, signed and dismissed
+    # players are hidden, and the club vector moves toward the liked ones and
+    # away from the dismissed ones (Recommender.club_query).
+    last = {}
+    for player_id, action in conn.execute(
+        "SELECT player_id, action FROM interactions WHERE club_id = ? AND action != 'viewed' ORDER BY id",
+        (club_id,),
+    ):
+        last[player_id] = action
+    liked = {p for p, a in last.items() if a in ("shortlisted", "signed")}
+    disliked = {p for p, a in last.items() if a == "dismissed"}
     try:
         if age_weight is None:
             age_weight = float(rec.config.get("age_weight", 0.0))
@@ -82,7 +97,8 @@ def recommend(
             mobility_weight = float(rec.config.get("mobility_weight", 0.0))
         items = rec.recommend(club_id, k=k, budget=budget_eur, resale_weight=resale_weight,
                               age_weight=age_weight, mobility_weight=mobility_weight,
-                              cold_slots=cold_slots, position=position, only_new=new_talents)
+                              cold_slots=cold_slots, position=position, only_new=new_talents,
+                              exclude_ids=liked | disliked, liked_ids=liked, disliked_ids=disliked)
     except KeyError:
         raise HTTPException(404, f"Unknown club_id {club_id}. See /clubs.")
     club = rec.clubs[rec.clubs["club_id"] == club_id].iloc[0]
@@ -94,5 +110,6 @@ def recommend(
         "age_weight": age_weight,
         "mobility_weight": mobility_weight,
         "latency_ms": round((time.perf_counter() - start) * 1000, 1),
+        "feedback": {"liked": len(liked), "dismissed": len(disliked)},
         "recommendations": items,
     }

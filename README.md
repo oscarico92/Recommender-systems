@@ -81,6 +81,7 @@ PyTorch from PyPI is large. On a machine without a GPU, `pip install torch --ind
 | 3. Tune on the validation season | `python -m src.tune` | `eval/results/tuning*.csv`, `best_config.json` |
 | 4. Evaluate on the test season | `python -m eval.run_experiments` | `eval/results/test_results.md`, `case_studies.md`, `docs/figures/loss_curves.png` |
 | 5. Export the served model | `python -m src.export_model` | `models/serving/` |
+| 6. Retrain with the actions logged in the app (optional) | `python -m src.export_model --feedback` | `models/serving/`, see [data/README.md](data/README.md#5-app-feedback) |
 
 The player features (`src/features.py`) are built automatically at each cutoff and cached in `data/processed/`. Data rules and limits are described in [data/README.md](data/README.md).
 
@@ -92,6 +93,7 @@ The player features (`src/features.py`) are built automatically at each cutoff a
 - **Two lists**: the main list is ranked by LightGCN. The "new talents" list ranks, with the encoder, the players unknown to the graph (no recruitment by a club of the 10 leagues in the last 10 years). The user can also give a few places of the main list to new talents (`cold_slots`, 0 by default because it lowered NDCG@10 on the validation season).
 - **Re-ranking**: the 50 best candidates are filtered by the club's budget (90th percentile of the values it recruited in the last 3 years, or the user's value), then re-ordered with a bonus for the 12-month market value trend.
 - **Explanations**: the club's recent signings closest to the recommended player in the embedding space.
+- **Feedback loop**: "Shortlist" and "Dismiss" are logged by `/log_interaction`. At once, `/recommend` hides these players and moves the club vector toward the shortlisted ones and away from the dismissed ones (Rocchio update), so similar players move up without retraining. On real recruitments of the validation season this does not improve NDCG@10 (0.0094 with and without), so it adapts the list to the scout rather than making it more accurate. Retraining with the feedback is also possible (`python -m src.export_model --feedback`) but its effect is within the run-to-run noise (see [data/README.md](data/README.md#5-app-feedback)).
 
 ## Evaluation
 
@@ -111,10 +113,13 @@ Full tables: [eval/results/test_results.md](eval/results/test_results.md). Mean 
 | Most popular (last 2 seasons) | 0.0017 | 0.0038 | 41% | -0.06 | 24.6 |
 | Highest market value | 0.0003 | 0.0009 | 0% | -0.17 | 23.4 |
 | LightGCN alone | 0.0098 ± 0.0014 | 0.0173 ± 0.0036 | 76% | -0.21 | 29.1 |
-| Feature encoder alone | 0.0092 ± 0.0011 | 0.0179 ± 0.0027 | 81% | -0.24 | 30.0 |
+| Feature encoder alone | 0.0085 ± 0.0015 | 0.0167 ± 0.0003 | 81% | -0.23 | 30.1 |
 | LightGCN + budget re-ranking | 0.0108 ± 0.0017 | 0.0238 ± 0.0037 | **98%** | -0.20 | 29.5 |
 | LightGCN + budget + resale (w=1) | 0.0125 ± 0.0027 | 0.0239 ± 0.0008 | **98%** | -0.11 | 28.4 |
+| **LightGCN + budget + tuned re-ranking** (resale 1, age 1, mobility 0.5) | **0.0162 ± 0.0025** | 0.0237 ± 0.0019 | **98%** | **+0.02** | **26.1** |
 | *Players actually signed* | | | | *+0.19* | *24.5* |
+
+The re-ranking weights were chosen on the validation season (`python -m src.tune --rerank-only`, [tuning_rerank.csv](eval/results/tuning_rerank.csv)): the strongest age penalty whose validation NDCG@10 stays within one seed standard deviation of the best. They are the API defaults (`models/serving/config.json`).
 
 New talents list (players unknown to the graph, 60% of the catalogue):
 
@@ -129,11 +134,14 @@ What it shows:
 - **Beats the sanity floor.** LightGCN reaches 5 times the NDCG@10 of both most popular rankings (all history or last 2 seasons), with clearly separated standard deviations, and recommends 70 times more distinct players (coverage 5.7% against 0.08%).
 - **Budget compliance.** The budget re-ranking raises the share of affordable players from 76% to 98%.
 - **Cold start.** The encoder finds new talents 4.5 times better than "highest market value" and 50 times better than random.
-- **What is not shown.** The NDCG@10 differences between the LightGCN variants (0.0098 to 0.0125) are within one standard deviation over 3 seeds, so we do not claim that the re-ranking improves accuracy, only that it does not hurt it.
-- **Value change.** Every model list loses value in the following year (-0.11 to -0.24), while random gains (+0.07) and the players actually signed gain more (+0.19). The reason is age: the top 10 of the models average 28 to 30 years, against 24.5 for the real signings and 25.8 for the catalogue. LightGCN learns from experienced players who changed clubs many times, and older players lose value. The resale bonus reduces the loss (-0.21 to -0.11, about 0.7 year younger) but does not remove it.
+- **Age bias corrected.** The tuned re-ranking (penalties on age and on players who change clubs often) brings the top 10 from 29.1 to 26.1 years, and the recommended players now gain value in the following year (+0.02 against -0.21) instead of losing it.
+- **Accuracy.** With the tuned re-ranking, NDCG@10 is 0.0162 ± 0.0025 against 0.0098 ± 0.0014 for LightGCN alone, a gap larger than the noise. Against budget + resale only (0.0125 ± 0.0027) the gain is about 1.4 standard deviations, and on the validation season all re-ranking settings were within noise (0.0131 to 0.0142), so we claim that the re-ranking does not hurt accuracy, not a precise gain.
+- **Why the age penalty was needed.** Without it, every model list loses value in the following year (-0.11 to -0.24) while the players actually signed gain (+0.19): LightGCN learns from experienced players who changed clubs many times, and the top 10 averaged 28 to 30 years against 24.5 for the real signings. The re-ranking only reorders the 50 best candidates, so the lists stay older than real signings (26.1 against 24.5).
 - Absolute values are low because each club signs about 10 players among 17,628 candidates: a random ranking scores 0.0004.
 
-Known limits, to work on in week 4: the age and popularity bias above (the same experienced forwards appear for several clubs, see [case studies](eval/results/case_studies.md)), and new talents lists that include established stars who simply have not moved in 10 years. Training curves: [docs/figures/loss_curves.png](docs/figures/loss_curves.png).
+- **Run-to-run instability.** Two trainings that differ only by the seed share about 10 to 30% of a club's top 10, while the averaged metrics stay stable (± 0.0014 on NDCG@10 over 3 seeds). The lists shown in the demo and the case studies therefore depend on the training run. The committed model in `models/serving/` is the one used for the showcase. Tracked in issue oscarico92/Recommender-systems#5.
+
+Known limits: lists still older than real signings (26.1 against 24.5), main list explanations that rarely share the player's position (issue oscarico92/Recommender-systems#7), and new talents lists that include established stars who simply have not moved in 10 years. Case studies: [eval/results/case_studies.md](eval/results/case_studies.md). Training curves: [docs/figures/loss_curves.png](docs/figures/loss_curves.png).
 
 ## Repository structure
 
