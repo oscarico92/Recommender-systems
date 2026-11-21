@@ -62,3 +62,37 @@ def test_rerank_budget_and_resale():
     assert out.tolist() == [1, 2, 0]          # over budget goes last, excluded never appears
     out = rerank_group(scores, value, trend, budget=10e6, resale_weight=5.0, length=2)
     assert out.tolist() == [2, 1]             # strong resale focus favours the rising player
+
+
+def test_rerank_age_and_mobility():
+    scores = np.array([3.0, 2.0, 1.0])
+    value = np.full(3, 1e6)
+    trend = np.zeros(3)
+    age = np.array([31.0, 29.0, 21.0])
+    moves = np.array([0.0, 6.0, 1.0])
+    base = rerank_group(scores, value, trend, None, 0.0, 3)
+    assert base.tolist() == [0, 1, 2]
+    # default weights (0) keep the model order even when age and moves are given
+    same = rerank_group(scores, value, trend, None, 0.0, 3, age=age, moves=moves)
+    assert same.tolist() == base.tolist()
+    young = rerank_group(scores, value, trend, None, 0.0, 3, age=age, age_weight=5.0)
+    assert young[0] == 2                      # strong age penalty puts the 21-year-old first
+    calm = rerank_group(scores, value, trend, None, 0.0, 3, moves=moves, mobility_weight=5.0)
+    assert calm[-1] == 1                      # the player with 6 moves goes last
+
+
+def test_select_rerank_prefers_younger_within_tolerance():
+    from src.rerank import select_rerank
+    table = pd.DataFrame({
+        "resale_weight": [0.5, 0.5, 0.5, 0.5],
+        "age_weight": [0.0, 0.5, 1.0, 1.0],
+        "mobility_weight": [0.0, 0.0, 0.0, 0.5],
+        "ndcg@10": [0.0120, 0.0115, 0.0100, 0.0112],
+        "ndcg@10_std": [0.0010, 0.0010, 0.0010, 0.0010],
+    })
+    top = select_rerank(table)
+    # 0.0100 is outside the tolerance (0.0120 - 0.0010), so the strongest
+    # admissible age weight is 1.0 with mobility 0.5 (ndcg 0.0112)
+    assert (top["age_weight"], top["mobility_weight"]) == (1.0, 0.5)
+    # with a zero tolerance the most accurate setting wins
+    assert select_rerank(table.assign(**{"ndcg@10_std": 0.0}))["age_weight"] == 0.0

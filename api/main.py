@@ -2,6 +2,7 @@
 
 Endpoints
 - GET  /health
+- GET  /config                   model version and default re-ranking weights
 - GET  /clubs                    clubs that can ask for recommendations
 - GET  /recommend?club_id=985    top players for a club (real model)
 - POST /log_interaction          a user action on a recommended player
@@ -39,6 +40,22 @@ def health() -> dict:
     return {"status": "ok", "model_loaded": (SERVING_DIR / "embeddings.npz").exists()}
 
 
+DEFAULT_RESALE_WEIGHT = 0.5
+
+
+@app.get("/config")
+def config() -> dict:
+    """Defaults used by /recommend when a parameter is not given (tuned on validation)."""
+    rec = get_recommender()
+    return {
+        "model_version": rec.config.get("model_version"),
+        "resale_weight": float(rec.config.get("resale_weight", DEFAULT_RESALE_WEIGHT)),
+        "age_weight": float(rec.config.get("age_weight", 0.0)),
+        "mobility_weight": float(rec.config.get("mobility_weight", 0.0)),
+        "cold_slots": int(rec.config.get("cold_slots", 0)),
+    }
+
+
 @app.get("/clubs")
 def clubs() -> list[dict]:
     rec = get_recommender()
@@ -51,7 +68,9 @@ def recommend(
     club_id: int,
     k: int = Query(10, ge=1, le=50),
     budget_eur: float | None = Query(None, gt=0, description="Defaults to the club's usual budget"),
-    resale_weight: float = Query(0.5, ge=0, le=3, description="Weight of the 12-month value trend"),
+    resale_weight: float | None = Query(None, ge=0, le=3, description="Weight of the 12-month value trend. Defaults to the value tuned on validation"),
+    age_weight: float | None = Query(None, ge=0, le=3, description="Penalty on age (corrects the age bias). Defaults to the value tuned on validation"),
+    mobility_weight: float | None = Query(None, ge=0, le=3, description="Penalty on players who changed club often. Defaults to the value tuned on validation"),
     cold_slots: int | None = Query(None, ge=0, le=5, description="Places of the top 10 for players unknown to the graph"),
     position: Literal["Goalkeeper", "Defender", "Midfield", "Attack"] | None = None,
     new_talents: bool = Query(False, description="Only players unknown to the graph (no recruitment by a selected club in 10 years), ranked by the cold-start encoder"),
@@ -72,7 +91,14 @@ def recommend(
     liked = {p for p, a in last.items() if a in ("shortlisted", "signed")}
     disliked = {p for p, a in last.items() if a == "dismissed"}
     try:
+        if resale_weight is None:
+            resale_weight = float(rec.config.get("resale_weight", DEFAULT_RESALE_WEIGHT))
+        if age_weight is None:
+            age_weight = float(rec.config.get("age_weight", 0.0))
+        if mobility_weight is None:
+            mobility_weight = float(rec.config.get("mobility_weight", 0.0))
         items = rec.recommend(club_id, k=k, budget=budget_eur, resale_weight=resale_weight,
+                              age_weight=age_weight, mobility_weight=mobility_weight,
                               cold_slots=cold_slots, position=position, only_new=new_talents,
                               exclude_ids=liked | disliked, liked_ids=liked, disliked_ids=disliked)
     except KeyError:
@@ -83,6 +109,9 @@ def recommend(
         "club_name": club["club_name"],
         "budget_eur": budget_eur if budget_eur is not None else float(club["budget_eur"]),
         "model_version": rec.config.get("model_version"),
+        "resale_weight": resale_weight,
+        "age_weight": age_weight,
+        "mobility_weight": mobility_weight,
         "latency_ms": round((time.perf_counter() - start) * 1000, 1),
         "feedback": {"liked": len(liked), "dismissed": len(disliked)},
         "recommendations": items,
