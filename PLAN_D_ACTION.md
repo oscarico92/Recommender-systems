@@ -120,9 +120,9 @@ Priorités issues du test de la semaine 3 (voir les issues GitHub).
 - [x] Pondération des prêts testée (aucune preuve de gain, poids gardé à 1) : `eval/results/loan_weight.md`
 
 ### Oscar
-- [ ] Métriques finales et graphiques (loss, ablation) après les corrections, mise à jour de `eval/results/`
-- [ ] 3 études de cas clubs (club vendeur, gros club, petit budget) pour le pitch
-- [ ] Vérifier que le README tourne toujours sur une machine propre après les derniers merges
+- [x] Métriques finales et graphiques (loss, ablation) après les corrections, mise à jour de `eval/results/`
+- [x] 3 études de cas clubs (club vendeur, gros club, petit budget) pour le pitch
+- [x] Vérifier que le README tourne toujours sur une machine propre après les derniers merges
 
 ### Tous
 - [ ] Scénario de démo, slides de pitch, flyer d'une page
