@@ -151,7 +151,9 @@ class Recommender:
 
         five_years = past["transfer_date"].max() - pd.Timedelta(days=5 * 365) if len(past) else None
         recent = past[past["transfer_date"] >= five_years] if len(past) else past
-        recent = recent.sort_values("transfer_date", ascending=False).head(40)
+        # a player signed twice (loan, then permanent) is one signing: keep the latest,
+        # otherwise he can be quoted twice in the same explanation
+        recent = recent.sort_values("transfer_date", ascending=False).drop_duplicates("player_id").head(40)
         recent = recent[recent["player_id"].isin(self._graph_pos.keys())]
         out = []
         for rank, j in enumerate(ranked, start=1):
