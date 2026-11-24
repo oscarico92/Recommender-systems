@@ -186,21 +186,20 @@ def scouting_report(p: dict) -> None:
     st.plotly_chart(radar([p]), use_container_width=True, config={"displayModeBar": False},
                     key=f"radar{p['player_id']}{st.session_state.setdefault('_chart', 0)}")
     st.session_state["_chart"] += 1
-    if True:
-        st.caption("Market value over the last 5 years")
-        fig = value_chart(p)
-        if fig is not None:
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False},
-                            key=f"value{p['player_id']}{st.session_state['_chart']}")
-            st.session_state["_chart"] += 1
-        s = p.get("stats") or {}
-        st.markdown(
-            f"**{s.get('games') or 0:.0f}** games, **{s.get('minutes') or 0:.0f}** minutes  \n"
-            f"**{s.get('goals_per90') or 0:.2f}** goals and **{s.get('assists_per90') or 0:.2f}** assists per 90  \n"
-            f"**{s.get('euro_games') or 0:.0f}** European games, {s.get('height_cm') or 0:.0f} cm, "
-            f"{s.get('foot') or 'unknown'} foot  \n"
-            f"Peak value **{(s.get('peak_value_eur') or 0) / 1e6:.1f} M EUR**, "
-            f"{s.get('n_past_transfers') or 0:.0f} past transfers")
+    st.caption("Market value over the last 5 years")
+    fig = value_chart(p)
+    if fig is not None:
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False},
+                        key=f"value{p['player_id']}{st.session_state['_chart']}")
+        st.session_state["_chart"] += 1
+    s = p.get("stats") or {}
+    st.markdown(
+        f"**{s.get('games') or 0:.0f}** games, **{s.get('minutes') or 0:.0f}** minutes  \n"
+        f"**{s.get('goals_per90') or 0:.2f}** goals and **{s.get('assists_per90') or 0:.2f}** assists per 90  \n"
+        f"**{s.get('euro_games') or 0:.0f}** European games, {s.get('height_cm') or 0:.0f} cm, "
+        f"{s.get('foot') or 'unknown'} foot  \n"
+        f"Peak value **{(s.get('peak_value_eur') or 0) / 1e6:.1f} M EUR**, "
+        f"{s.get('n_past_transfers') or 0:.0f} past transfers")
 
 
 # ---------- page setup ----------
@@ -237,6 +236,8 @@ with st.sidebar:
     cold = st.slider("Places for new talents in the main list", 0, 3, min(int(defaults["cold_slots"]), 3),
                      help="0 gives the most accurate list. The new talents also have their own tab.")
     st.caption(f"Model {defaults.get('model_version', '')}. Defaults tuned on the 2024/25 season.")
+    st.caption("Data, photos and crests: Transfermarkt (transfermarkt-datasets, CC0). "
+               "Photos and crests need an internet connection.")
 
 params = {"club_id": club_id, "k": k, "budget_eur": budget_m * 1e6, "resale_weight": resale,
           "age_weight": youth, "mobility_weight": mobility, "cold_slots": cold}
@@ -399,20 +400,19 @@ with tab_short:
         if len(chosen) >= 2:
             st.plotly_chart(radar(chosen), use_container_width=True, config={"displayModeBar": False},
                             key="compare_radar")
-            if True:
-                rows = {}
-                for q in chosen:
-                    s = q.get("stats") or {}
-                    rows[q["name"]] = {
-                        "Position": q.get("position"), "Age": q.get("age"),
-                        "Club": q.get("current_club"),
-                        "Value (M EUR)": round((q.get("market_value_eur") or 0) / 1e6, 1),
-                        "Minutes (12 m)": s.get("minutes"), "Goals / 90": round(s.get("goals_per90") or 0, 2),
-                        "Assists / 90": round(s.get("assists_per90") or 0, 2),
-                        "European games": s.get("euro_games"),
-                    }
-                # one row per player, so every column has a single type
-                st.dataframe(pd.DataFrame.from_dict(rows, orient="index"), use_container_width=True)
+            rows = {}
+            for q in chosen:
+                s = q.get("stats") or {}
+                rows[q["name"]] = {
+                    "Position": q.get("position"), "Age": q.get("age"),
+                    "Club": q.get("current_club"),
+                    "Value (M EUR)": round((q.get("market_value_eur") or 0) / 1e6, 1),
+                    "Minutes (12 m)": s.get("minutes"), "Goals / 90": round(s.get("goals_per90") or 0, 2),
+                    "Assists / 90": round(s.get("assists_per90") or 0, 2),
+                    "European games": s.get("euro_games"),
+                }
+            # one row per player, so every column has a single type
+            st.dataframe(pd.DataFrame.from_dict(rows, orient="index"), use_container_width=True)
         else:
             st.caption("Pick at least 2 players.")
 

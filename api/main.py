@@ -125,6 +125,7 @@ def players(ids: str = Query(..., description="Comma separated player ids, at mo
             p = data[0].loc[pid]
             item["photo_url"] = _clean(p["image_url"])
             item["club_logo_url"] = club_logo_url(p["crest_club_id"])
+            item["league_id"] = _clean(p["club_league_id"]) or item["league_id"]
             item["stats"] = {k: _clean(p[k]) for k in ["foot", "height_cm", "games", "minutes", "goals_per90",
                                                         "assists_per90", "cards_per90", "euro_games",
                                                         "top_league_minutes_share", "value_trend",
@@ -185,6 +186,8 @@ def recommend(
         pid = item["player_id"]
         crest = data[0].at[pid, "crest_club_id"] if data is not None and pid in data[0].index else meta.get(pid)
         item["club_logo_url"] = club_logo_url(crest)
+        if data is not None and pid in data[0].index:  # league of the club shown (fixed for loans)
+            item["league_id"] = _clean(data[0].at[pid, "club_league_id"]) or item["league_id"]
         item["photo_url"] = (_clean(data[0].at[pid, "image_url"])
                              if data is not None and pid in data[0].index else None)
     return {
