@@ -135,3 +135,21 @@ def test_non_json_api_error_is_handled(page_api, monkeypatch):
     monkeypatch.setattr(requests, "get", unavailable)
     page = open_page()
     assert not page.exception and page.error
+
+
+def test_shortlist_tab_lists_and_compares_shortlisted_players(page_api):
+    page = open_page()
+    for _ in range(2):
+        button = next(b for b in page.button if b.label == "Shortlist" and b.key.startswith("main"))
+        page = button.click().run()
+        assert not page.exception
+    assert any(s.value == "Your shortlist (2)" for s in page.subheader)
+    picker = next(m for m in page.multiselect if m.label.startswith("Choose 2 or 3 players"))
+    assert len(picker.value) == 2
+
+
+def test_table_view_renders(page_api):
+    page = open_page()
+    page = page.radio[0].set_value("Table").run()
+    assert not page.exception
+    assert page.dataframe

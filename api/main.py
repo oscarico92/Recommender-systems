@@ -5,6 +5,7 @@ Endpoints
 - GET  /config                   model version and default re-ranking weights
 - GET  /clubs                    clubs that can ask for recommendations
 - GET  /recommend?club_id=985    top players for a club (real model)
+- GET  /players?ids=1,2          player profiles: photo, stats, percentiles, value history
 - POST /log_interaction          a user action on a recommended player
 - GET  /interactions             logged actions (to check the database)
 """
@@ -35,6 +36,41 @@ def get_recommender():
     return Recommender.load(SERVING_DIR)
 
 
+CLUB_LOGO_URL = "https://tmssl.akamaized.net/images/wappen/head/{club_id}.png"
+
+
+def club_logo_url(club_id) -> str | None:
+    """Transfermarkt crest of a club (loaded by the viewer's browser)."""
+    try:
+        return CLUB_LOGO_URL.format(club_id=int(club_id))
+    except (TypeError, ValueError):
+        return None
+
+
+@lru_cache(maxsize=1)
+def get_profiles():
+    """Player profiles and value history (python -m src.export_profiles). None if not exported."""
+    import pandas as pd
+
+    path = SERVING_DIR / "player_profiles.parquet"
+    if not path.exists():
+        return None
+    profiles = pd.read_parquet(path).set_index("player_id")
+    history = pd.read_parquet(SERVING_DIR / "value_history.parquet")
+    history = {pid: g for pid, g in history.groupby("player_id")}
+    return profiles, history
+
+
+def _clean(value):
+    """JSON-safe scalar (no numpy types, no NaN)."""
+    try:
+        if value != value:  # NaN
+            return None
+    except TypeError:
+        return value
+    return value.item() if hasattr(value, "item") else value
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "model_loaded": (SERVING_DIR / "embeddings.npz").exists()}
@@ -60,7 +96,46 @@ def config() -> dict:
 def clubs() -> list[dict]:
     rec = get_recommender()
     cols = ["club_id", "club_name", "league_id", "budget_eur", "n_transfers"]
-    return rec.clubs[cols].sort_values(["league_id", "club_name"]).to_dict(orient="records")
+    out = rec.clubs[cols].sort_values(["league_id", "club_name"]).to_dict(orient="records")
+    for c in out:
+        c["logo_url"] = club_logo_url(c["club_id"])
+    return out
+
+
+@app.get("/players")
+def players(ids: str = Query(..., description="Comma separated player ids, at most 20")) -> list[dict]:
+    try:
+        wanted = [int(x) for x in ids.split(",") if x.strip()][:20]
+    except ValueError:
+        raise HTTPException(422, "ids must be integers separated by commas")
+    rec = get_recommender()
+    data = get_profiles()
+    meta = rec.players.set_index("player_id")
+    out = []
+    for pid in wanted:
+        if pid not in meta.index:
+            continue
+        m = meta.loc[pid]
+        item = {"player_id": pid, "name": m["name"], "position": m["position"],
+                "sub_position": m["sub_position"], "age": round(float(m["age"]), 1),
+                "country": m["country"], "current_club": m["club_name"], "league_id": m["league_id"],
+                "market_value_eur": float(m["value_eur"]), "club_logo_url": club_logo_url(m["club_id"]),
+                "photo_url": None, "stats": {}, "percentiles": {}, "value_history": []}
+        if data is not None and pid in data[0].index:
+            p = data[0].loc[pid]
+            item["photo_url"] = _clean(p["image_url"])
+            item["club_logo_url"] = club_logo_url(p["crest_club_id"])
+            item["stats"] = {k: _clean(p[k]) for k in ["foot", "height_cm", "games", "minutes", "goals_per90",
+                                                        "assists_per90", "cards_per90", "euro_games",
+                                                        "top_league_minutes_share", "value_trend",
+                                                        "peak_value_eur", "n_past_transfers"]}
+            item["percentiles"] = {c[4:]: _clean(p[c]) for c in p.index if c.startswith("pct_")}
+            h = data[1].get(pid)
+            if h is not None:
+                item["value_history"] = [{"date": d.strftime("%Y-%m-%d"), "value_eur": float(v)}
+                                         for d, v in zip(h["date"], h["value_eur"])]
+        out.append(item)
+    return out
 
 
 @app.get("/recommend")
@@ -104,9 +179,18 @@ def recommend(
     except KeyError:
         raise HTTPException(404, f"Unknown club_id {club_id}. See /clubs.")
     club = rec.clubs[rec.clubs["club_id"] == club_id].iloc[0]
+    data = get_profiles()
+    meta = rec.players.set_index("player_id")["club_id"]
+    for item in items:
+        pid = item["player_id"]
+        crest = data[0].at[pid, "crest_club_id"] if data is not None and pid in data[0].index else meta.get(pid)
+        item["club_logo_url"] = club_logo_url(crest)
+        item["photo_url"] = (_clean(data[0].at[pid, "image_url"])
+                             if data is not None and pid in data[0].index else None)
     return {
         "club_id": club_id,
         "club_name": club["club_name"],
+        "club_logo_url": club_logo_url(club_id),
         "budget_eur": budget_eur if budget_eur is not None else float(club["budget_eur"]),
         "model_version": rec.config.get("model_version"),
         "resale_weight": resale_weight,
