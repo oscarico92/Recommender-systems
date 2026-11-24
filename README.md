@@ -68,7 +68,7 @@ The trained model is versioned in `models/serving/`, so running the app needs ne
 
    "Shortlist" and "Dismiss" are saved through `/log_interaction` into `data/scoutai.db` (SQLite). After a successful save, both recommendation lists refresh and the player disappears from the suggestions.
 
-   Data, photos and club crests come from Transfermarkt (transfermarkt-datasets, CC0). Photos and crests are loaded by the browser, so they need an internet connection (plan one for the showcase). Without internet, the cards show the player's initials and the rest of the app works the same.
+   Data: transfermarkt-datasets (CC0). Photos and club crests: Transfermarkt, not covered by that licence. They are loaded by the browser, so they need an internet connection (plan one for the showcase). Without internet, the cards show the player's initials and the rest of the app works the same.
 
    ![ScoutAI interface](docs/figures/app_screenshot.png)
 

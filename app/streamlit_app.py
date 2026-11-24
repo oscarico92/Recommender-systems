@@ -236,7 +236,7 @@ with st.sidebar:
     cold = st.slider("Places for new talents in the main list", 0, 3, min(int(defaults["cold_slots"]), 3),
                      help="0 gives the most accurate list. The new talents also have their own tab.")
     st.caption(f"Model {defaults.get('model_version', '')}. Defaults tuned on the 2024/25 season.")
-    st.caption("Data, photos and crests: Transfermarkt (transfermarkt-datasets, CC0). "
+    st.caption("Data: transfermarkt-datasets (CC0). Photos and crests: Transfermarkt. "
                "Photos and crests need an internet connection.")
 
 params = {"club_id": club_id, "k": k, "budget_eur": budget_m * 1e6, "resale_weight": resale,
