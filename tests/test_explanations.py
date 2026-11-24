@@ -63,3 +63,12 @@ def test_main_list_explained_by_same_position(rec):
                 total += 1
                 same += pos.get(s["player_id"]) == o["position"]
     assert total and same / total > 0.8
+
+
+def test_explanations_never_quote_the_same_signing_twice(rec):
+    """A player signed twice by a club (loan, then permanent) was quoted twice (Celtic)."""
+    for club_id in rec.clubs["club_id"]:
+        for only_new in (False, True):
+            for o in rec.recommend(int(club_id), k=10, only_new=only_new):
+                ids = [s["player_id"] for s in o["similar_to"]]
+                assert len(ids) == len(set(ids)), (club_id, o["name"])
