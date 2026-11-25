@@ -87,14 +87,18 @@ def get_defaults() -> dict:
 
 def get_profiles(ids: list[int]) -> dict[int, dict]:
     """Photos, stats and value history. The page still works without them."""
-    if not ids:
-        return {}
-    try:
-        r = requests.get(f"{API}/players", params={"ids": ",".join(str(i) for i in ids[:20])}, timeout=10)
-        r.raise_for_status()
-        return {p["player_id"]: p for p in r.json()}
-    except (requests.RequestException, ValueError):
-        return {}
+    unique = list(dict.fromkeys(int(i) for i in ids))
+    profiles: dict[int, dict] = {}
+    # The API serves at most 20 players per call, so load them in batches.
+    for start in range(0, len(unique), 20):
+        batch = unique[start:start + 20]
+        try:
+            r = requests.get(f"{API}/players", params={"ids": ",".join(str(i) for i in batch)}, timeout=10)
+            r.raise_for_status()
+            profiles.update({p["player_id"]: p for p in r.json()})
+        except (requests.RequestException, ValueError):
+            continue
+    return profiles
 
 
 def log(club_id: int, player_id: int, action: str, rank: int | None, model_version: str | None) -> None:
