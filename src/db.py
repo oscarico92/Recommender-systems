@@ -16,7 +16,7 @@ from pathlib import Path
 
 from src.config import DB_PATH
 
-ACTIONS = ("viewed", "shortlisted", "dismissed", "signed")
+ACTIONS = ("viewed", "shortlisted", "dismissed", "signed", "restored")
 
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS interactions (
@@ -49,6 +49,26 @@ def connect(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    # Upgrade legacy CHECK constraints without dropping accounts or action history.
+    definition = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'interactions'").fetchone()[0]
+    if "'restored'" not in definition:
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            definition = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'interactions'").fetchone()[0]
+            if "'restored'" not in definition:
+                conn.execute("ALTER TABLE interactions RENAME TO interactions_legacy")
+                conn.execute("DROP INDEX IF EXISTS idx_interactions_club")
+                conn.execute("DROP INDEX IF EXISTS idx_interactions_player")
+                for statement in SCHEMA.split(";"):
+                    if statement.strip():
+                        conn.execute(statement)
+                conn.execute("INSERT INTO interactions SELECT * FROM interactions_legacy")
+                conn.execute("DROP TABLE interactions_legacy")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            conn.close()
+            raise
     return conn
 
 

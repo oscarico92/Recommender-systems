@@ -50,3 +50,28 @@ def test_unknown_ids_rejected(client):
 @pytest.mark.parametrize("limit", [-5, 0, 5000])
 def test_interactions_limit_validated(client, limit):
     assert client.get("/interactions", params={"limit": limit}).status_code == 422
+
+
+def test_legacy_database_migration_preserves_history_and_accounts(tmp_path):
+    import sqlite3
+    from src.db import SCHEMA, create_account, check_account, insert_interaction
+    path = tmp_path / "legacy.db"
+    with sqlite3.connect(path) as old:
+        old.executescript(SCHEMA.replace(", 'restored'", ""))
+        old.execute("INSERT INTO interactions (club_id, player_id, action) VALUES (583, 42, 'dismissed')")
+        create_account(old, "existing", "secret123", 583)
+    conn = connect(path)
+    insert_interaction(conn, 583, 42, "restored")
+    conn.close()
+    conn = connect(path)
+    assert check_account(conn, "existing", "secret123")["club_id"] == 583
+    assert [r[0] for r in conn.execute("SELECT action FROM interactions ORDER BY id")] == ["dismissed", "restored"]
+    conn.close()
+
+
+def test_current_choices_not_limited_by_audit_page(client):
+    client.post("/log_interaction", json={"club_id": 583, "player_id": 42, "action": "dismissed"})
+    for _ in range(101):
+        client.post("/log_interaction", json={"club_id": 583, "player_id": 2, "action": "viewed"})
+    choices = client.get("/interactions/current", params={"club_id": 583}).json()
+    assert len(choices) == 1 and choices[0]["player_id"] == 42

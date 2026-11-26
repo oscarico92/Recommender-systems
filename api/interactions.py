@@ -46,7 +46,7 @@ def get_known_ids() -> tuple[frozenset, frozenset] | None:
 class InteractionIn(BaseModel):
     club_id: int = Field(gt=0, examples=[583])
     player_id: int = Field(gt=0, examples=[342229])
-    action: Literal["viewed", "shortlisted", "dismissed", "signed"]
+    action: Literal["viewed", "shortlisted", "dismissed", "signed", "restored"]
     rank: int | None = Field(default=None, ge=1, description="Position in the list shown")
     model_version: str | None = Field(default=None, max_length=64)
 
@@ -78,3 +78,17 @@ def get_interactions(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> list[dict]:
     return list_interactions(conn, club_id=club_id, limit=limit)
+
+
+@router.get("/interactions/current", response_model=list[InteractionOut])
+def current_interactions(
+    club_id: int = Query(..., gt=0),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> list[dict]:
+    """Latest decision per player, independent of the paginated audit history."""
+    rows = conn.execute(
+        "SELECT * FROM interactions WHERE id IN ("
+        "SELECT MAX(id) FROM interactions WHERE club_id = ? AND action != 'viewed' GROUP BY player_id"
+        ") ORDER BY id DESC", (club_id,),
+    )
+    return [dict(row) for row in rows]
