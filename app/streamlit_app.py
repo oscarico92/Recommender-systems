@@ -235,10 +235,10 @@ default = next((i for i, lab in enumerate(labels) if lab.startswith("Manchester 
 
 # ---------- sign in / create account ----------
 
-def account_call(path: str, payload: dict) -> dict | None:
-    """POST to /login or /accounts. Shows the API's message on a refused request."""
+def account_call(path: str, payload: dict, method: str = "post") -> dict | None:
+    """Send an account request and show the API's message if it is refused."""
     try:
-        r = requests.post(f"{API}{path}", json=payload, timeout=10)
+        r = getattr(requests, method)(f"{API}{path}", json=payload, timeout=10)
     except requests.RequestException:
         st.error("Could not reach the API. Check that it is running and try again.")
         return None
@@ -324,21 +324,37 @@ with st.sidebar:
     if st.button("Log out", key="logout"):
         st.session_state.pop("account", None)
         st.rerun()
+    with st.expander("Account settings"):
+        with st.form("account_settings"):
+            new_label = st.selectbox("New recruitment club", list(labels),
+                                     index=list(labels).index(label), key="account_new_club")
+            password = st.text_input("Current password", type="password", key="account_password")
+            if st.form_submit_button("Save"):
+                updated = account_call(f"/accounts/{account['username']}",
+                                       {"password": password, "club_id": int(labels[new_label])},
+                                       method="patch")
+                if updated:
+                    st.session_state["account"] = updated
+                    # A new club starts with its own budget and strategy defaults.
+                    for key in ("budget_m", "position", "k", "resale", "youth", "mobility", "cold"):
+                        st.session_state.pop(key, None)
+                    st.session_state["saved_action"] = "Recruitment club updated"
+                    st.rerun()
     usual = float(clubs.set_index("club_id").loc[club_id, "budget_eur"])
     budget_m = st.slider("Budget per player (M EUR)", 0.05, 150.0, round(max(usual / 1e6, 0.05), 2), 0.05,
-                         help="Based on the market values of the club's signings (90th percentile, last 3 years). "
+                         key="budget_m", help="Based on the market values of the club's signings (90th percentile, last 3 years). "
                               "These are estimated values, not transfer fees.")
-    position = st.selectbox("Position", ["All", "Goalkeeper", "Defender", "Midfield", "Attack"])
-    k = st.slider("Number of players", 5, 20, 10)
+    position = st.selectbox("Position", ["All", "Goalkeeper", "Defender", "Midfield", "Attack"], key="position")
+    k = st.slider("Number of players", 5, 20, 10, key="k")
     st.subheader("Strategy")
-    resale = st.slider("Resale focus", 0.0, 2.0, float(defaults["resale_weight"]), 0.1,
+    resale = st.slider("Resale focus", 0.0, 2.0, float(defaults["resale_weight"]), 0.1, key="resale",
                        help="Favours players whose market value went up in the last 12 months.")
-    youth = st.slider("Youth focus", 0.0, 2.0, float(defaults["age_weight"]), 0.1,
+    youth = st.slider("Youth focus", 0.0, 2.0, float(defaults["age_weight"]), 0.1, key="youth",
                       help="Pushes younger players up. The raw model favours players of 28-30, "
                            "clubs actually sign players of about 24.5.")
-    mobility = st.slider("Penalty for frequent movers", 0.0, 2.0, float(defaults["mobility_weight"]), 0.1,
+    mobility = st.slider("Penalty for frequent movers", 0.0, 2.0, float(defaults["mobility_weight"]), 0.1, key="mobility",
                          help="Pushes down players who changed club many times.")
-    cold = st.slider("Places for new talents in the main list", 0, 3, min(int(defaults["cold_slots"]), 3),
+    cold = st.slider("Places for new talents in the main list", 0, 3, min(int(defaults["cold_slots"]), 3), key="cold",
                      help="0 gives the most accurate list. The new talents also have their own tab.")
     st.caption(f"Model {defaults.get('model_version', '')}. Defaults tuned on the 2024/25 season.")
     st.caption("Data: transfermarkt-datasets (CC0). Photos and crests: Transfermarkt. "

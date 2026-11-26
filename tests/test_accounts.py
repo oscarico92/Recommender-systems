@@ -62,3 +62,34 @@ def test_refused_cases(client):
                                           "club_id": 985}).status_code == 422
     assert client.post("/accounts", json={"username": "scout_2", "password": "123",
                                           "club_id": 985}).status_code == 422
+
+
+def test_change_club_keeps_actions_with_their_original_club(client):
+    client.post("/accounts", json={"username": "scout_mufc", "password": "secret123", "club_id": 985})
+    conn = connect(client.db_path)
+    try:
+        from src.db import insert_interaction, list_interactions
+
+        insert_interaction(conn, 985, 342229, "shortlisted")
+        changed = client.patch("/accounts/SCOUT_MUFC", json={"password": "secret123", "club_id": 371})
+        assert changed.status_code == 200
+        assert changed.json() == {"username": "scout_mufc", "club_id": 371}
+        assert client.post("/login", json={"username": "scout_mufc", "password": "secret123"}).json()["club_id"] == 371
+        assert len(list_interactions(conn, club_id=985)) == 1
+        assert list_interactions(conn, club_id=371) == []
+    finally:
+        conn.close()
+
+
+def test_change_club_refuses_wrong_password_and_invalid_club(client):
+    from src.config import SERVING_DIR
+
+    client.post("/accounts", json={"username": "scout_mufc", "password": "secret123", "club_id": 985})
+    path = "/accounts/scout_mufc"
+    assert client.patch(path, json={"password": "wrong", "club_id": 371}).status_code == 401
+    assert client.patch("/accounts/nobody", json={"password": "secret123", "club_id": 371}).status_code == 401
+    assert client.patch(path, json={"password": "secret123", "club_id": 0}).status_code == 422
+    assert client.patch(path, json={"password": "", "club_id": 371}).status_code == 422
+    if (SERVING_DIR / "clubs.parquet").exists():
+        assert client.patch(path, json={"password": "secret123", "club_id": 99999999}).status_code == 404
+    assert client.post("/login", json={"username": "scout_mufc", "password": "secret123"}).json()["club_id"] == 985
