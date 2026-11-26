@@ -20,6 +20,9 @@ import streamlit as st
 API = os.environ.get("SCOUTAI_API_URL", "http://localhost:8000")
 ASSETS = Path(__file__).parent / "assets"
 GREEN, GOLD, INK, MUTED = "#0B6E4F", "#F2C94C", "#1B2430", "#5B6573"
+LEAGUES = {"GB1": "Premier League", "ES1": "LaLiga", "IT1": "Serie A", "L1": "Bundesliga",
+           "FR1": "Ligue 1", "PO1": "Liga Portugal", "NL1": "Eredivisie", "BE1": "Jupiler Pro League",
+           "TR1": "Süper Lig", "SC1": "Scottish Premiership"}
 RADAR_LABELS = {
     "minutes": "Minutes played",
     "goals_per90": "Goals per 90",
@@ -78,6 +81,27 @@ st.markdown(f"""
   .sa-hero-stat span {{ font-size: 0.8rem; color: #D7EDE4; }}
   .sa-hero ul {{ margin: 0; padding-left: 18px; color: #EAF5F0; font-size: 0.95rem; line-height: 1.8; }}
   .sa-login-title {{ font-size: 1.5rem; font-weight: 700; color: {INK}; margin: 6px 0 2px 0; }}
+  .sa-banner {{ display: flex; align-items: center; justify-content: space-between; gap: 24px;
+                background: linear-gradient(120deg, {GREEN} 0%, #08503A 70%, #063D2C 100%);
+                border-radius: 16px; padding: 22px 26px; margin: 4px 0 14px 0; color: #fff;
+                box-shadow: 0 6px 18px rgba(11, 110, 79, 0.18); }}
+  .sa-banner-id {{ display: flex; align-items: center; gap: 18px; min-width: 0; flex: 1 1 auto; }}
+  .sa-banner-crest {{ width: 76px; height: 76px; flex: none; border-radius: 50%; background: #fff;
+                      display: flex; align-items: center; justify-content: center;
+                      box-shadow: 0 0 0 4px rgba(255,255,255,0.25); }}
+  .sa-banner-crest span {{ width: 54px !important; height: 54px !important; }}
+  .sa-banner-crest b {{ color: {GREEN}; font-size: 1.5rem; }}
+  .sa-banner h1 {{ color: #fff; font-size: 2rem; margin: 0; padding: 0; line-height: 1.15; }}
+  .sa-banner-meta {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }}
+  .sa-chip {{ background: rgba(255,255,255,0.14); color: #EAF5F0; border-radius: 999px;
+              padding: 3px 11px; font-size: 0.8rem; white-space: nowrap; }}
+  .sa-chip.gold {{ background: {GOLD}; color: {INK}; font-weight: 700; }}
+  .sa-banner-kpis {{ display: grid; grid-template-columns: repeat(4, auto); gap: 8px; flex: 0 0 auto; }}
+  .sa-banner-kpi {{ background: rgba(255,255,255,0.11); border-radius: 12px; padding: 9px 13px; }}
+  .sa-banner-kpi .l {{ color: #CFE6DC; font-size: 0.72rem; white-space: nowrap; }}
+  .sa-banner-kpi .v {{ color: #fff; font-size: 1.15rem; font-weight: 700; white-space: nowrap; }}
+  .sa-banner-kpi.gold .v {{ color: {GOLD}; }}
+  @media (max-width: 1280px) {{ .sa-banner {{ flex-direction: column; align-items: flex-start; }} }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -450,18 +474,26 @@ data = fetch({})
 talents = fetch({"k": 6, "new_talents": "true"})
 profiles = get_profiles([r["player_id"] for r in data["recommendations"] + talents["recommendations"]])
 
-head_left, head_right = st.columns([5, 4])
-with head_left:
-    st.markdown(f'<div class="sa-head">{crest(data.get("club_logo_url"), 48)}<h1>{esc(data["club_name"])}</h1></div>'
-                f'<p class="sa-tag">Recruitment recommendations learned from 26,000 real transfers '
-                f'of 322 European clubs.</p>', unsafe_allow_html=True)
-with head_right:
-    fb = data.get("feedback", {})
-    kpis = [("Budget per player", f"{data['budget_eur'] / 1e6:.1f} M EUR"), ("Shortlisted", fb.get("liked", 0)),
-            ("Dismissed", fb.get("dismissed", 0)), ("Response time", f"{data['latency_ms']:.0f} ms")]
-    st.markdown('<div class="sa-kpis">' + "".join(
-        f'<div class="sa-kpi"><div class="sa-kpi-l">{esc(lab)}</div><div class="sa-kpi-v">{esc(val)}</div></div>'
-        for lab, val in kpis) + "</div>", unsafe_allow_html=True)
+club_row = clubs.set_index("club_id").loc[club_id]
+league = LEAGUES.get(str(club_row["league_id"]), str(club_row["league_id"]))
+fb = data.get("feedback", {})
+kpis = [("Budget / player", f"{data['budget_eur'] / 1e6:.1f} M EUR", "gold"),
+        ("Shortlisted", fb.get("liked", 0), ""), ("Dismissed", fb.get("dismissed", 0), ""),
+        ("Response time", f"{data['latency_ms']:.0f} ms", "")]
+club_crest = crest(data.get("club_logo_url"), 54) or f"<b>{initials(data['club_name'])}</b>"
+st.markdown(
+    f'<div class="sa-banner"><div class="sa-banner-id">'
+    f'<div class="sa-banner-crest">{club_crest}</div><div>'
+    f'<h1>{esc(data["club_name"])}</h1>'
+    f'<div class="sa-banner-meta"><span class="sa-chip">{esc(league)}</span>'
+    f'<span class="sa-chip">{int(club_row["n_transfers"])} signings in the data</span>'
+    f'<span class="sa-chip gold">{len(data["recommendations"])} recommendations</span></div>'
+    f'</div></div><div class="sa-banner-kpis">'
+    + "".join(f'<div class="sa-banner-kpi {cls}"><div class="l">{esc(lab)}</div><div class="v">{esc(val)}</div></div>'
+              for lab, val, cls in kpis)
+    + '</div></div>'
+    '<p class="sa-tag">Recruitment recommendations learned from 26,000 real transfers of 322 European clubs.</p>',
+    unsafe_allow_html=True)
 
 tab_main, tab_new, tab_short = st.tabs(["Recommendations", "New talents", "Shortlist and compare"])
 
