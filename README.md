@@ -60,7 +60,17 @@ The trained model is versioned in `models/serving/`, so running the app needs ne
    streamlit run app/streamlit_app.py
    ```
 
-   It opens http://localhost:8501. Pick a club, adjust the budget, the resale focus and the number of places for new talents. "Shortlist" and "Dismiss" are saved through `/log_interaction` into `data/scoutai.db` (SQLite) and listed at the bottom of the page. After a successful save, both recommendation lists refresh and the player disappears from the suggestions.
+   It opens http://localhost:8501. Pick a club, adjust the budget, the position and the strategy (resale, youth, frequent movers). The page has three tabs:
+
+   - **Recommendations**: player cards with photo, club crest, market value and its 12-month trend, and a "Scouting report" (radar of the player's statistics compared with players of the same position, value curve over 5 years, key stats). A table view is also available.
+   - **New talents**: players unknown to the graph, ranked by the cold-start encoder.
+   - **Shortlist and compare**: the shortlisted players, and a radar comparison of 2 or 3 players.
+
+   "Shortlist" and "Dismiss" are saved through `/log_interaction` into `data/scoutai.db` (SQLite). After a successful save, both recommendation lists refresh and the player disappears from the suggestions.
+
+   Data: transfermarkt-datasets (CC0). Photos and club crests: Transfermarkt, not covered by that licence. They are loaded by the browser, so they need an internet connection (plan one for the showcase). Without internet, the cards show the player's initials and the rest of the app works the same.
+
+   ![ScoutAI interface](docs/figures/app_screenshot.png)
 
    The budget is compared with estimated market values, not transfer fees. If too few of the model's candidates fit the budget, more expensive players complete the list; the page marks them "Above budget". The explanation panel distinguishes recruitment similarity from profile comparisons for new talents.
 
@@ -89,6 +99,7 @@ PyTorch from PyPI is large. On a machine without a GPU, `pip install torch --ind
 | 3. Tune on the validation season | `python -m src.tune` | `eval/results/tuning*.csv`, `best_config.json` |
 | 4. Evaluate on the test season | `python -m eval.run_experiments` | `eval/results/test_results.md`, `case_studies.md`, `docs/figures/loss_curves.png` |
 | 5. Export the served model | `python -m src.export_model` | `models/serving/` |
+| 5b. Export the player profiles shown in the app (no training) | `python -m src.export_profiles` | `models/serving/player_profiles.parquet`, `value_history.parquet` |
 | 6. Retrain with the actions logged in the app (optional) | `python -m src.export_model --feedback` | `models/serving/`, see [data/README.md](data/README.md#5-app-feedback) |
 
 The player features (`src/features.py`) are built automatically at each cutoff and cached in `data/processed/`. Data rules and limits are described in [data/README.md](data/README.md).

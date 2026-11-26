@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 56" width="220" height="56" role="img" aria-label="ScoutAI">
+  <g transform="translate(4,6)">
+    <circle cx="22" cy="22" r="20" fill="#0B6E4F"/>
+    <circle cx="22" cy="22" r="12.5" fill="none" stroke="#FFFFFF" stroke-width="2.6"/>
+    <circle cx="22" cy="22" r="4.2" fill="#F2C94C"/>
+    <path d="M22 2 V9 M22 35 V42 M2 22 H9 M35 22 H42" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round"/>
+  </g>
+  <text x="58" y="37" font-family="Helvetica Neue, Arial, sans-serif" font-size="29" font-weight="700" fill="#1B2430" letter-spacing="-0.5">Scout<tspan fill="#0B6E4F">AI</tspan></text>
+</svg>

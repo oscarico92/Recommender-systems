@@ -135,3 +135,44 @@ def test_non_json_api_error_is_handled(page_api, monkeypatch):
     monkeypatch.setattr(requests, "get", unavailable)
     page = open_page()
     assert not page.exception and page.error
+
+
+def test_shortlist_tab_lists_and_compares_shortlisted_players(page_api):
+    page = open_page()
+    for _ in range(2):
+        button = next(b for b in page.button if b.label == "Shortlist" and b.key.startswith("main"))
+        page = button.click().run()
+        assert not page.exception
+    assert any(s.value == "Your shortlist (2)" for s in page.subheader)
+    picker = next(m for m in page.multiselect if m.label.startswith("Choose 2 or 3 players"))
+    assert len(picker.value) == 2
+
+
+def test_table_view_renders(page_api):
+    page = open_page()
+    page = page.radio[0].set_value("Table").run()
+    assert not page.exception
+    assert page.dataframe
+
+
+def test_twenty_recommendations_keep_new_talent_profiles(page_api):
+    page = open_page()
+    page = next(s for s in page.slider if s.label == "Number of players").set_value(20).run()
+    assert not page.exception
+    assert not any(c.value == "No detailed statistics for this player." for c in page.caption)
+
+
+def test_shortlist_over_twenty_players_keeps_every_profile(page_api):
+    import pandas as pd
+
+    ids = pd.read_parquet(SERVING_DIR / "player_profiles.parquet")["player_id"].head(25).tolist()
+    for pid in ids:
+        page_api.post("/log_interaction", json={"club_id": 985, "player_id": int(pid), "action": "shortlisted"})
+    page = open_page()
+    assert not page.exception
+    assert any(s.value == "Your shortlist (25)" for s in page.subheader)
+    assert not any(f"Player {pid}<" in m.value for m in page.markdown for pid in ids)
+    picker = next(m for m in page.multiselect if m.label.startswith("Choose 2 or 3 players"))
+    assert {page_api.get("/players", params={"ids": str(pid)}).json()[0]["name"] for pid in ids} <= {
+        o.split(" (")[0] for o in picker.options
+    }
