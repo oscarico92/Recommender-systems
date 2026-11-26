@@ -101,6 +101,7 @@ Run the tests with `python -m pytest -q` (expected: 86 passed and 1 skipped with
 | Symptom | Fix |
 | --- | --- |
 | The page says it could not load the clubs and model settings | The API is not running, or not on port 8000. Start it first (step 3) and click "Retry connection". |
+| `activate` fails in PowerShell ("running scripts is disabled on this system") | Run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`, then activate again, or use cmd instead of PowerShell. |
 | `ModuleNotFoundError` | The virtual environment is not active in this terminal: run the activate command of step 2 again. |
 | Port 8000 or 8501 already in use | Start the API with `--port 8001` and the app with `SCOUTAI_API_URL=http://127.0.0.1:8001 streamlit run app/streamlit_app.py` (Windows PowerShell: `$env:SCOUTAI_API_URL="http://127.0.0.1:8001"` first). |
 | Cards show initials instead of photos | Photos and crests are loaded from Transfermarkt by the browser and need internet. Everything else works offline. |
