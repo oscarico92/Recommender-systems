@@ -28,6 +28,13 @@ RADAR_LABELS = {
     "top_league_minutes_share": "Top-league minutes",
     "value_trend": "Value trend",
 }
+SETTINGS_KEYS = ("budget_m", "position", "k", "resale", "youth", "mobility", "cold")
+
+
+def clear_settings() -> None:
+    """Let the next account or club use its own default controls."""
+    for key in SETTINGS_KEYS:
+        st.session_state.pop(key, None)
 
 st.set_page_config(page_title="ScoutAI", page_icon=str(ASSETS / "icon.png"), layout="wide")
 st.logo(str(ASSETS / "logo.svg"), size="large")
@@ -287,6 +294,7 @@ def login_page() -> None:
                     if st.form_submit_button("Sign in", type="primary", use_container_width=True):
                         account = account_call("/login", {"username": user, "password": pwd})
                         if account:
+                            clear_settings()
                             st.session_state["account"] = account
                             box.empty()
                             st.rerun()
@@ -304,6 +312,7 @@ def login_page() -> None:
                             account = account_call("/accounts", {"username": user, "password": pwd,
                                                                  "club_id": int(labels[label])})
                             if account:
+                                clear_settings()
                                 st.session_state["account"] = account
                                 st.session_state["saved_action"] = f"Account created, welcome {account['username']}"
                                 box.empty()
@@ -323,6 +332,7 @@ with st.sidebar:
     st.markdown(f"**{esc(label)}**  \nSigned in as {esc(account['username'])}")
     if st.button("Log out", key="logout"):
         st.session_state.pop("account", None)
+        clear_settings()
         st.rerun()
     with st.expander("Account settings"):
         with st.form("account_settings"):
@@ -336,8 +346,7 @@ with st.sidebar:
                 if updated:
                     st.session_state["account"] = updated
                     # A new club starts with its own budget and strategy defaults.
-                    for key in ("budget_m", "position", "k", "resale", "youth", "mobility", "cold"):
-                        st.session_state.pop(key, None)
+                    clear_settings()
                     st.session_state["saved_action"] = "Recruitment club updated"
                     st.rerun()
     usual = float(clubs.set_index("club_id").loc[club_id, "budget_eur"])

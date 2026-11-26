@@ -282,3 +282,22 @@ def test_account_settings_switch_club_and_reset_budget(page_api):
     assert page.slider(key="budget_m").value == round(max(expected / 1e6, 0.05), 2)
     assert page.slider(key="budget_m").value != 0.05
     assert old_budget != 0.05
+
+
+def test_logout_then_sign_in_to_another_club_resets_settings(page_api):
+    page_api.post("/accounts", json={"username": "scout_mufc", "password": "secret123", "club_id": 985})
+    page_api.post("/accounts", json={"username": "scout_celtic", "password": "secret456", "club_id": 371})
+    page = open_page({"username": "scout_mufc", "club_id": 985})
+    page = page.slider(key="budget_m").set_value(61.0).run()
+    page = page.slider(key="resale").set_value(0.2).run()
+    page = next(b for b in page.button if b.label == "Log out").click().run()
+    assert "account" not in page.session_state
+    page.text_input(key="in_user").input("scout_celtic")
+    page.text_input(key="in_pwd").input("secret456")
+    page = next(b for b in page.button if b.label == "Sign in").click().run()
+    assert not page.exception
+    assert page.session_state["account"]["club_id"] == 371
+    expected = next(c["budget_eur"] for c in page_api.get("/clubs").json() if c["club_id"] == 371)
+    assert page.slider(key="budget_m").value == round(max(expected / 1e6, 0.05), 2)
+    defaults = page_api.get("/config").json()
+    assert page.slider(key="resale").value == defaults["resale_weight"]
