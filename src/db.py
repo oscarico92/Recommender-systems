@@ -1,9 +1,16 @@
-"""SQLite storage for the interactions logged by the app.
+"""SQLite storage for the app: interactions logged by the app, and accounts.
 
-Each row is one action of a club user on a player shown by ScoutAI. These
-rows are added to the training data of the next run (week 4).
+Each interaction row is one action of a club user on a player shown by
+ScoutAI. These rows are added to the training data of the next run (week 4).
+
+Each account is a scout of one club: the club is chosen when the account is
+created. Passwords are stored as salted PBKDF2-SHA256 hashes, never in clear.
+This is a demo-grade login (no session tokens on the API side).
 """
 
+import hashlib
+import hmac
+import os
 import sqlite3
 from pathlib import Path
 
@@ -23,7 +30,17 @@ CREATE TABLE IF NOT EXISTS interactions (
 );
 CREATE INDEX IF NOT EXISTS idx_interactions_club ON interactions (club_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_interactions_player ON interactions (player_id);
+CREATE TABLE IF NOT EXISTS accounts (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash TEXT    NOT NULL,      -- hex PBKDF2-SHA256
+    salt          TEXT    NOT NULL,      -- hex, 16 random bytes
+    club_id       INTEGER NOT NULL,
+    created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
 """
+
+PBKDF2_ITERATIONS = 200_000
 
 
 def connect(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
@@ -60,3 +77,41 @@ def list_interactions(conn: sqlite3.Connection, club_id: int | None = None, limi
             "SELECT * FROM interactions WHERE club_id = ? ORDER BY id DESC LIMIT ?", (club_id, limit)
         )
     return [dict(r) for r in rows.fetchall()]
+
+
+def _hash_password(password: str, salt: bytes) -> str:
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PBKDF2_ITERATIONS).hex()
+
+
+def create_account(conn: sqlite3.Connection, username: str, password: str, club_id: int) -> dict | None:
+    """Create an account. Returns None if the username is already taken."""
+    salt = os.urandom(16)
+    try:
+        conn.execute(
+            "INSERT INTO accounts (username, password_hash, salt, club_id) VALUES (?, ?, ?, ?)",
+            (username, _hash_password(password, salt), salt.hex(), club_id),
+        )
+    except sqlite3.IntegrityError:
+        return None
+    conn.commit()
+    return {"username": username, "club_id": club_id}
+
+
+def check_account(conn: sqlite3.Connection, username: str, password: str) -> dict | None:
+    """The account if the password is right, None otherwise."""
+    row = conn.execute("SELECT * FROM accounts WHERE username = ?", (username,)).fetchone()
+    if row is None:
+        return None
+    if not hmac.compare_digest(row["password_hash"], _hash_password(password, bytes.fromhex(row["salt"]))):
+        return None
+    return {"username": row["username"], "club_id": row["club_id"]}
+
+
+def update_account_club(conn: sqlite3.Connection, username: str, password: str, club_id: int) -> dict | None:
+    """Change a scout's club after checking the current password."""
+    account = check_account(conn, username, password)
+    if account is None:
+        return None
+    conn.execute("UPDATE accounts SET club_id = ? WHERE username = ?", (club_id, account["username"]))
+    conn.commit()
+    return {"username": account["username"], "club_id": club_id}

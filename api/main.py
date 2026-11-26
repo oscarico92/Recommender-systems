@@ -8,6 +8,8 @@ Endpoints
 - GET  /players?ids=1,2          player profiles: photo, stats, percentiles, value history
 - POST /log_interaction          a user action on a recommended player
 - GET  /interactions             logged actions (to check the database)
+- POST /accounts                 create a scout account (username, password, club)
+- POST /login                    sign in, returns the account's club
 """
 
 import sqlite3
@@ -18,6 +20,7 @@ from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.accounts import router as accounts_router
 from api.interactions import get_db
 from api.interactions import router as interactions_router
 from src.config import SERVING_DIR
@@ -25,6 +28,7 @@ from src.config import SERVING_DIR
 app = FastAPI(title="ScoutAI API", version="0.3")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.include_router(interactions_router)
+app.include_router(accounts_router)
 
 
 @lru_cache(maxsize=1)

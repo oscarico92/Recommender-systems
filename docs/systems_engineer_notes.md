@@ -64,7 +64,10 @@ The percentages differ slightly from the PR description because this check uses 
 
 Start the API and page using the README. Keep the exported model; retraining can change the players shown. For a rehearsal, use a separate SQLite file so earlier clicks do not hide the demo players.
 
-1. Pick Manchester United. Point out that the sliders start from the settings selected on validation.
+Before the demo, create an account on the demo database. A fresh SQLite database has no accounts. Keep the app session open during the demo: refreshing the page logs out.
+
+1. Sign in with the Manchester United account (or create it live: username, password, recruitment club). Point out that the sliders start from the settings selected on validation.
+   To show another club, use **Account settings** in the sidebar, choose Celtic, enter the account password and save. The budget and recommendations switch to Celtic's defaults; Manchester United's shortlist stays with Manchester United.
 2. Explain one recommendation and its reference signings. The position is prioritised; the similarity inside that group comes from the embeddings.
 3. Lower the budget and show an "Above budget" label if the candidate list needs alternatives. Market value is an estimate, not a guaranteed price.
 4. Open the new-talents section. Explain that "new" means unknown to this transfer graph, not necessarily young or unknown in football.
@@ -85,4 +88,4 @@ Start the API and page using the README. Keep the exported model; retraining can
 
 **Why can a player exceed the budget?** The existing re-ranking completes a short list with more expensive candidates. The page now makes that visible. Changing it into a strict cap would be a separate model/product decision.
 
-**Is this a production service?** No. This is a local showcase app with SQLite and no user accounts. The checks demonstrate the requested end-to-end flow, not multi-user production readiness.
+**Is this a production service?** No. This is a local showcase app with SQLite accounts but no API session tokens. The checks demonstrate the requested end-to-end flow, not multi-user production readiness.
