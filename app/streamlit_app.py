@@ -17,11 +17,12 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 
-from src.config import LEAGUES
-
 API = os.environ.get("SCOUTAI_API_URL", "http://localhost:8000")
 ASSETS = Path(__file__).parent / "assets"
 GREEN, GOLD, INK, MUTED = "#0B6E4F", "#F2C94C", "#1B2430", "#5B6573"
+LEAGUES = {"GB1": "Premier League", "ES1": "LaLiga", "IT1": "Serie A", "L1": "Bundesliga",
+           "FR1": "Ligue 1", "PO1": "Liga Portugal", "NL1": "Eredivisie", "BE1": "Jupiler Pro League",
+           "TR1": "Süper Lig", "SC1": "Scottish Premiership"}
 RADAR_LABELS = {
     "minutes": "Minutes played",
     "goals_per90": "Goals per 90",
