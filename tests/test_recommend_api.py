@@ -43,6 +43,28 @@ def test_position_filter_and_budget_flag(client, position):
     assert all(p["within_budget"] == (p["market_value_eur"] <= 500000) for p in items)
 
 
+@pytest.mark.parametrize("new_talents", [False, True])
+def test_big_club_gets_players_in_its_price_range(client, new_talents):
+    """PSG (583), budget 60 M EUR: no player far below the club's level."""
+    clubs = {c["club_id"]: c for c in client.get("/clubs").json()}
+    floor = clubs[583]["min_value_eur"]
+    assert floor >= 5e6
+    data = client.get("/recommend", params={"club_id": 583, "budget_eur": 60e6, "new_talents": new_talents}).json()
+    assert data["min_value_eur"] == floor and data["budget_eur"] == 60e6
+    items = data["recommendations"]
+    assert len(items) == 10
+    assert all(floor <= p["market_value_eur"] <= 60e6 for p in items)
+    assert not any(p["below_min_value"] for p in items)
+
+
+def test_floor_can_be_removed_and_never_exceeds_budget(client):
+    data = client.get("/recommend", params={"club_id": 583, "min_value_eur": 0, "position": "Goalkeeper"}).json()
+    assert data["min_value_eur"] == 0
+    assert any(p["market_value_eur"] < 5e6 for p in data["recommendations"])
+    data = client.get("/recommend", params={"club_id": 583, "budget_eur": 1e6}).json()
+    assert data["min_value_eur"] == 1e6     # floor capped at the budget
+
+
 def test_new_talents_are_unknown_to_graph(client):
     result = client.get("/recommend", params={"club_id": 331, "new_talents": True, "k": 5})
     assert result.status_code == 200

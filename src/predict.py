@@ -24,7 +24,7 @@ FEEDBACK_STRENGTH = 0.25
 
 @dataclass
 class Recommender:
-    clubs: pd.DataFrame          # club_id, club_name, league_id, budget_eur, n_transfers
+    clubs: pd.DataFrame          # club_id, club_name, league_id, budget_eur, min_value_eur, n_transfers
     players: pd.DataFrame        # catalogue metadata, aligned with the embeddings
     history: pd.DataFrame        # club_id, player_id, player_name, transfer_date (explanations)
     club_emb: np.ndarray
@@ -98,6 +98,13 @@ class Recommender:
         emb = np.where(self.in_graph[mask, None], self.warm_emb[mask], self.cold_emb[mask])
         return emb / (np.linalg.norm(emb, axis=1, keepdims=True) + 1e-9)
 
+    def club_min_value(self, club_id: int) -> float:
+        """Club's price floor (0 if the exported model has none)."""
+        if "min_value_eur" not in self.clubs:
+            return 0.0
+        value = self.clubs.iloc[self._club_pos[club_id]]["min_value_eur"]
+        return 0.0 if pd.isna(value) else float(value)
+
     def club_list(self) -> list[dict]:
         return self.clubs.to_dict(orient="records")
 
@@ -106,6 +113,7 @@ class Recommender:
         club_id: int,
         k: int = 10,
         budget: float | None = None,
+        min_value: float | None = None,
         resale_weight: float = 0.0,
         age_weight: float = 0.0,
         mobility_weight: float = 0.0,
@@ -121,6 +129,10 @@ class Recommender:
 
         only_new=True gives the "new talents" list: only players never
         transferred before the model's cutoff, ranked by the cold-start encoder.
+
+        The price range is [min_value, budget]. Both default to the club's own
+        values: budget = 90th percentile and min_value = 25th percentile of the
+        market values it recruited in 3 years. min_value=0 removes the floor.
         """
         if club_id not in self._club_pos:
             raise KeyError(f"unknown club_id {club_id}")
@@ -128,6 +140,8 @@ class Recommender:
         club = self.clubs.iloc[ci]
         if budget is None:
             budget = float(club["budget_eur"])
+        min_value = self.club_min_value(club_id) if min_value is None else float(min_value)
+        min_value = min(min_value, budget)
         cold_slots = self.config.get("cold_slots", 0) if cold_slots is None else cold_slots
         length = max(k, 10)
 
@@ -141,7 +155,8 @@ class Recommender:
 
         s_warm = np.where(self.in_graph & ~banned, self.warm_emb @ c, -np.inf)
         s_cold = np.where(~self.in_graph & ~banned, self.cold_emb @ c, -np.inf)
-        extra = dict(age=self._age, age_weight=age_weight, moves=self._moves, mobility_weight=mobility_weight)
+        extra = dict(age=self._age, age_weight=age_weight, moves=self._moves, mobility_weight=mobility_weight,
+                     min_value=min_value)
         warm = rerank_group(s_warm, self._value, self._trend, budget, resale_weight, length, **extra)
         cold = rerank_group(s_cold, self._value, self._trend, budget, resale_weight, length, **extra)
         if only_new:
@@ -174,6 +189,7 @@ class Recommender:
                 "market_value_eur": float(p["value_eur"]),
                 "value_trend_12m": round(float(p["value_trend"]), 3),
                 "within_budget": bool(p["value_eur"] <= budget),
+                "below_min_value": bool(p["value_eur"] < min_value),
                 "never_transferred": is_new,
                 "score": round(score, 4),
                 "similar_to": self._explain_profile(j, emb, recent) if is_new else self._explain(emb, recent, position=p["position"]),

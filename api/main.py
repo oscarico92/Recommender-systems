@@ -100,7 +100,9 @@ def config() -> dict:
 def clubs() -> list[dict]:
     rec = get_recommender()
     cols = ["club_id", "club_name", "league_id", "budget_eur", "n_transfers"]
-    out = rec.clubs[cols].sort_values(["league_id", "club_name"]).to_dict(orient="records")
+    clubs_df = rec.clubs.copy()
+    clubs_df["min_value_eur"] = [rec.club_min_value(c) for c in clubs_df["club_id"]]
+    out = clubs_df[cols + ["min_value_eur"]].sort_values(["league_id", "club_name"]).to_dict(orient="records")
     for c in out:
         c["logo_url"] = club_logo_url(c["club_id"])
     return out
@@ -147,7 +149,8 @@ def players(ids: str = Query(..., description="Comma separated player ids, at mo
 def recommend(
     club_id: int,
     k: int = Query(10, ge=1, le=50),
-    budget_eur: float | None = Query(None, gt=0, description="Defaults to the club's usual budget"),
+    budget_eur: float | None = Query(None, gt=0, description="Price ceiling. Defaults to the club's usual budget (90th percentile of the values it recruited in 3 years)"),
+    min_value_eur: float | None = Query(None, ge=0, description="Price floor. Defaults to the club's usual floor (25th percentile of the values it recruited in 3 years). 0 removes it"),
     resale_weight: float | None = Query(None, ge=0, le=3, description="Weight of the 12-month value trend. Defaults to the value tuned on validation"),
     age_weight: float | None = Query(None, ge=0, le=3, description="Penalty on age (corrects the age bias). Defaults to the value tuned on validation"),
     mobility_weight: float | None = Query(None, ge=0, le=3, description="Penalty on players who changed club often. Defaults to the value tuned on validation"),
@@ -177,13 +180,15 @@ def recommend(
             age_weight = float(rec.config.get("age_weight", 0.0))
         if mobility_weight is None:
             mobility_weight = float(rec.config.get("mobility_weight", 0.0))
-        items = rec.recommend(club_id, k=k, budget=budget_eur, resale_weight=resale_weight,
+        items = rec.recommend(club_id, k=k, budget=budget_eur, min_value=min_value_eur, resale_weight=resale_weight,
                               age_weight=age_weight, mobility_weight=mobility_weight,
                               cold_slots=cold_slots, position=position, only_new=new_talents,
                               exclude_ids=liked | disliked, liked_ids=liked, disliked_ids=disliked)
     except KeyError:
         raise HTTPException(404, f"Unknown club_id {club_id}. See /clubs.")
     club = rec.clubs[rec.clubs["club_id"] == club_id].iloc[0]
+    budget = budget_eur if budget_eur is not None else float(club["budget_eur"])
+    floor = min(min_value_eur if min_value_eur is not None else rec.club_min_value(club_id), budget)
     data = get_profiles()
     meta = rec.players.set_index("player_id")["club_id"]
     for item in items:
@@ -198,7 +203,8 @@ def recommend(
         "club_id": club_id,
         "club_name": club["club_name"],
         "club_logo_url": club_logo_url(club_id),
-        "budget_eur": budget_eur if budget_eur is not None else float(club["budget_eur"]),
+        "budget_eur": budget,
+        "min_value_eur": floor,
         "model_version": rec.config.get("model_version"),
         "resale_weight": resale_weight,
         "age_weight": age_weight,

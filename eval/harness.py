@@ -53,12 +53,26 @@ class EvalSetup:
         return {p: i for i, p in enumerate(self.item_ids)}
 
 
-def club_budgets(history: pd.DataFrame, club_ids: np.ndarray, cutoff: str) -> np.ndarray:
+def club_value_quantile(history: pd.DataFrame, club_ids: np.ndarray, cutoff: str, q: float,
+                        default: float) -> np.ndarray:
+    """Quantile q of the market values a club recruited in the 3 years before the cutoff
+    (all its history if it recruited nobody in 3 years, `default` if nothing is known)."""
     recent = history[history["transfer_date"] >= pd.Timestamp(cutoff) - pd.Timedelta(days=3 * 365)]
-    q_recent = recent.groupby("club_id")["market_value_eur"].quantile(0.9)
-    q_all = history.groupby("club_id")["market_value_eur"].quantile(0.9)
-    budget = q_recent.reindex(club_ids).fillna(q_all.reindex(club_ids)).fillna(1e6)
-    return budget.to_numpy(float)
+    q_recent = recent.groupby("club_id")["market_value_eur"].quantile(q)
+    q_all = history.groupby("club_id")["market_value_eur"].quantile(q)
+    out = q_recent.reindex(club_ids).fillna(q_all.reindex(club_ids)).fillna(default)
+    return out.to_numpy(float)
+
+
+def club_budgets(history: pd.DataFrame, club_ids: np.ndarray, cutoff: str) -> np.ndarray:
+    """Ceiling of the price range: 90th percentile of the values recruited in 3 years."""
+    return club_value_quantile(history, club_ids, cutoff, 0.9, 1e6)
+
+
+def club_value_floors(history: pd.DataFrame, club_ids: np.ndarray, cutoff: str) -> np.ndarray:
+    """Floor of the price range: 25th percentile of the values recruited in 3 years."""
+    return np.minimum(club_value_quantile(history, club_ids, cutoff, 0.25, 0.0),
+                      club_budgets(history, club_ids, cutoff))
 
 
 def build_setup(

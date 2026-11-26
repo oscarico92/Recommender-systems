@@ -17,7 +17,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from eval.harness import build_setup
+from eval.harness import build_setup, club_value_floors
 from src.config import DB_PATH, RESULTS_DIR, SERVING_CUTOFF, SERVING_DIR
 from src.features import _raw, load_or_build
 from src.split import load_interactions
@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     clubs = pd.read_parquet(RESULTS_DIR.parents[1] / "data" / "processed" / "clubs.parquet")
     clubs = clubs.set_index("club_id").reindex(setup.club_ids).reset_index()
     clubs["budget_eur"] = setup.club_budget
+    # price floor (25th percentile of the values recruited in 3 years), see src/rerank.py
+    clubs["min_value_eur"] = club_value_floors(setup.history, setup.club_ids, SERVING_CUTOFF)
 
     names = _raw("players").set_index("player_id")["name"]
     # full history: used to exclude past signings and, for the last 5 years, to explain
