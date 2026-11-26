@@ -16,7 +16,7 @@ ScoutAI recommends football players to clubs. The club is the user, the player i
 
 ## Run locally (about 5 minutes)
 
-The trained model is versioned in `models/serving/`, so running the app needs neither the data nor PyTorch.
+The trained model is versioned in `models/serving/`, so running the app needs neither the data, nor PyTorch, nor a GPU. Python 3.10 or later; the steps below were checked from an empty folder with Python 3.13, where installing the dependencies took about a minute.
 
 1. Clone the repository and enter it.
 
@@ -30,13 +30,27 @@ The trained model is versioned in `models/serving/`, so running the app needs ne
 
 2. Create a virtual environment and install the dependencies (Python 3.10 or later).
 
+   macOS / Linux:
+
    ```bash
-   python -m venv .venv
+   python3 -m venv .venv
    ```
 
    ```bash
-   source .venv/bin/activate        # Windows: .venv\Scripts\activate
+   source .venv/bin/activate
    ```
+
+   Windows (PowerShell or cmd):
+
+   ```bash
+   py -m venv .venv
+   ```
+
+   ```bash
+   .venv\Scripts\activate
+   ```
+
+   Then, on every system:
 
    ```bash
    pip install -r requirements.txt
@@ -48,7 +62,7 @@ The trained model is versioned in `models/serving/`, so running the app needs ne
    uvicorn api.main:app --port 8000
    ```
 
-   Check it at http://localhost:8000/docs, or:
+   Check it by opening http://localhost:8000/recommend?club_id=985&k=5 in a browser: it returns the top 5 players for Manchester United (club 985) as JSON, starting with Dean Huijsen. All endpoints are documented at http://localhost:8000/docs. From a terminal (on Windows PowerShell, type `curl.exe`):
 
    ```bash
    curl "http://localhost:8000/recommend?club_id=985&k=5"
@@ -60,7 +74,7 @@ The trained model is versioned in `models/serving/`, so running the app needs ne
    streamlit run app/streamlit_app.py
    ```
 
-   It opens http://localhost:8501 on a login page. **Create an account** (username, password, and the club you recruit for) or **sign in** with an existing one: the recommendations are then made for the account's club. In the sidebar, **Account settings** changes the recruitment club after checking the password again; **Log out** goes back to the login page. Accounts are stored in the same SQLite database (`accounts` table), passwords as salted PBKDF2-SHA256 hashes, never in clear. This is a demo login: the API itself has no session tokens, so it is not a production authentication.
+   It opens http://localhost:8501 (open it by hand if the browser does not start; if Streamlit asks for an email on its first run, press Enter). The page starts on a login screen. On a new database there is no account yet: open the **Create an account** tab and choose any username (3 to 30 letters, digits, `.`, `_` or `-`), a password of at least 6 characters, and the club you recruit for (Manchester United is preselected). You can also **sign in** with an existing account: the recommendations are then made for the account's club. In the sidebar, **Account settings** changes the recruitment club after checking the password again; **Log out** goes back to the login page. Accounts are stored in the same SQLite database (`accounts` table), passwords as salted PBKDF2-SHA256 hashes, never in clear. This is a demo login: the API itself has no session tokens, so it is not a production authentication.
 
    Then adjust the budget, the position and the strategy (resale, youth, frequent movers). The page has three tabs:
 
@@ -80,7 +94,17 @@ The trained model is versioned in `models/serving/`, so running the app needs ne
 
 To reach the app from another machine on the same network, start the API with `--host 0.0.0.0`, then run `SCOUTAI_API_URL=http://<api-ip>:8000 streamlit run app/streamlit_app.py`.
 
-Run the tests with `python -m pytest -q`.
+Run the tests with `python -m pytest -q` (expected: 86 passed and 1 skipped without PyTorch; the skipped test checks training and needs `requirements-train.txt`).
+
+### Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| The page says it could not load the clubs and model settings | The API is not running, or not on port 8000. Start it first (step 3) and click "Retry connection". |
+| `ModuleNotFoundError` | The virtual environment is not active in this terminal: run the activate command of step 2 again. |
+| Port 8000 or 8501 already in use | Start the API with `--port 8001` and the app with `SCOUTAI_API_URL=http://127.0.0.1:8001 streamlit run app/streamlit_app.py` (Windows PowerShell: `$env:SCOUTAI_API_URL="http://127.0.0.1:8001"` first). |
+| Cards show initials instead of photos | Photos and crests are loaded from Transfermarkt by the browser and need internet. Everything else works offline. |
+| Wrong password, or the account is forgotten | Create another account: accounts are stored in `data/scoutai.db`, which can be deleted to start from scratch. |
 
 For a rehearsal with a separate database, set `SCOUTAI_DB_PATH` when starting the API (for example `SCOUTAI_DB_PATH=data/rehearsal.db uvicorn api.main:app --port 8000` on macOS/Linux). Use a new filename for a fresh rehearsal. The model stays the same, but previous test clicks do not affect the lists.
 
@@ -106,6 +130,16 @@ PyTorch from PyPI is large. On a machine without a GPU, `pip install torch --ind
 | 6. Retrain with the actions logged in the app (optional) | `python -m src.export_model --feedback` | `models/serving/`, see [data/README.md](data/README.md#5-app-feedback) |
 
 The player features (`src/features.py`) are built automatically at each cutoff and cached in `data/processed/`. Data rules and limits are described in [data/README.md](data/README.md).
+
+## Where each part is in the code
+
+| Part | Files | Checked by |
+| --- | --- | --- |
+| Data pipeline | `src/download_data.py`, `src/clean_transfers.py` (cleaning, loan inference), `src/features.py` (48 features at a cutoff), `data/README.md` | `tests/test_clean_transfers.py`, `tests/test_features_leakage.py` |
+| Graph and models | `src/graph.py`, `src/models/lightgcn.py` (LightGCN, BPR), `src/models/coldstart.py` (cold-start encoder), `src/train.py`, `src/tune.py` | `docs/figures/loss_curves.png`, `eval/results/tuning*.csv` |
+| Re-ranking and prediction | `src/rerank.py` (price range, resale, age, mobility), `src/predict.py` (scores, explanations, feedback), `src/export_model.py` | `tests/test_eval_and_rerank.py`, `tests/test_explanations.py`, `tests/test_feedback.py` |
+| Evaluation | `src/split.py` (temporal split), `eval/harness.py` (metrics), `eval/baselines.py`, `eval/run_experiments.py` | `eval/results/test_results.md`, `eval/results/seed_stability.md` |
+| System | `api/main.py` (FastAPI), `api/interactions.py`, `api/accounts.py`, `src/db.py` (SQLite), `app/streamlit_app.py` (Streamlit) | `tests/test_recommend_api.py`, `tests/test_log_interaction.py`, `tests/test_accounts.py`, `tests/test_streamlit_app.py` |
 
 ## Approach
 
@@ -167,7 +201,7 @@ Known limits: new talents lists can include established stars who simply have no
 ## Repository structure
 
 ```
-api/         FastAPI backend (/recommend, /clubs, /log_interaction)
+api/         FastAPI backend (/recommend, /clubs, /players, /accounts, /login, /log_interaction)
 app/         Streamlit frontend
 data/        raw and processed data (not versioned, see data/README.md)
 docs/        figures and reports
