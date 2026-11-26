@@ -33,7 +33,7 @@ RADAR_LABELS = {
     "top_league_minutes_share": "Top-league minutes",
     "value_trend": "Value trend",
 }
-SETTINGS_KEYS = ("budget_m", "position", "k", "resale", "youth", "mobility", "cold")
+SETTINGS_KEYS = ("budget_m", "min_m", "position", "k", "resale", "youth", "mobility", "cold")
 
 
 def clear_settings() -> None:
@@ -381,12 +381,20 @@ with st.sidebar:
                     clear_settings()
                     st.session_state["saved_action"] = "Recruitment club updated"
                     st.rerun()
-    usual = float(clubs.set_index("club_id").loc[club_id, "budget_eur"])
+    club_info = clubs.set_index("club_id").loc[club_id]
+    usual = float(club_info["budget_eur"])
+    usual_min = club_info.get("min_value_eur", 0.0)
+    usual_min = 0.0 if pd.isna(usual_min) else float(usual_min)
     budget_m = st.slider("Budget per player (M EUR)", 0.05, 150.0, round(max(usual / 1e6, 0.05), 2), 0.05,
-                         key="budget_m", help="Maximum value per player: players above it go to the end of the list. It is not a target, "
-                              "cheaper players are kept when they fit the club's recruitment habits (academy "
-                              "and low-cost signings included). Default: 90th percentile of the market values "
-                              "of the club's signings over the last 3 years. Estimated values, not transfer fees.")
+                         key="budget_m", help="Maximum value per player: players above it go to the end of the list. It is not a target. "
+                              "Default: 90th percentile of the market values of the club's signings over the last 3 years. "
+                              "Estimated values, not transfer fees.")
+    min_m = st.slider("Minimum value per player (M EUR)", 0.0, 150.0, round(usual_min / 1e6, 2), 0.05,
+                      key="min_m", help="Players below this market value are not proposed. Based on the club's signings "
+                           "(25th percentile, last 3 years), so a big club is not offered players far below its level. "
+                           "Set to 0 to see every price, academy and low-cost signings included.")
+    if min_m > budget_m:
+        st.caption("The minimum is above the budget: the budget is used as the minimum.")
     position = st.selectbox("Position", ["All", "Goalkeeper", "Defender", "Midfield", "Attack"], key="position")
     k = st.slider("Number of players", 5, 20, 10, key="k")
     st.subheader("Strategy")
@@ -403,7 +411,8 @@ with st.sidebar:
     st.caption("Data: transfermarkt-datasets (CC0). Photos and crests: Transfermarkt. "
                "Photos and crests need an internet connection.")
 
-params = {"club_id": club_id, "k": k, "budget_eur": budget_m * 1e6, "resale_weight": resale,
+params = {"club_id": club_id, "k": k, "budget_eur": budget_m * 1e6, "min_value_eur": min_m * 1e6,
+          "resale_weight": resale,
           "age_weight": youth, "mobility_weight": mobility, "cold_slots": cold}
 if position != "All":
     params["position"] = position
@@ -439,6 +448,8 @@ def card(rec: dict, data: dict, section: str, profile: dict | None) -> None:
             log(club_id, rec["player_id"], "dismissed", rec["rank"], data["model_version"])
         if not rec["within_budget"]:
             st.warning("Above budget, shown to complete the list")
+        elif rec.get("below_min_value"):
+            st.warning("Below your minimum value, shown to complete the list")
         if rec["similar_to"]:
             sims = ", ".join(f"{s['name']} ({s['year']})" for s in rec["similar_to"])
             if rec["similar_to"][0].get("basis") == "profile":
@@ -467,7 +478,7 @@ def table(data: dict) -> None:
         "Photo": r.get("photo_url"), "Rank": r["rank"], "Player": r["name"], "Position": position_label(r),
         "Age": round(r["age"]), "Crest": r.get("club_logo_url"), "Club": r["current_club"],
         "Value (M EUR)": r["market_value_eur"] / 1e6, "12-month trend": (math.exp(r["value_trend_12m"]) - 1) * 100,
-        "Within budget": r["within_budget"], "New talent": r["never_transferred"],
+        "In price range": r["within_budget"] and not r.get("below_min_value", False), "New talent": r["never_transferred"],
     } for r in data["recommendations"]]
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True, row_height=52, column_config={
         "Photo": st.column_config.ImageColumn(width="small"),
@@ -487,7 +498,9 @@ profiles = get_profiles([r["player_id"] for r in data["recommendations"] + talen
 club_row = clubs.set_index("club_id").loc[club_id]
 league = LEAGUES.get(str(club_row["league_id"]), str(club_row["league_id"]))
 fb = data.get("feedback", {})
-kpis = [("Budget / player", f"{data['budget_eur'] / 1e6:.1f} M EUR", "gold"),
+price = (f"{data['min_value_eur'] / 1e6:.1f} to {data['budget_eur'] / 1e6:.1f} M EUR"
+         if data.get("min_value_eur") else f"up to {data['budget_eur'] / 1e6:.1f} M EUR")
+kpis = [("Price range / player", price, "gold"),
         ("Shortlisted", fb.get("liked", 0), ""), ("Dismissed", fb.get("dismissed", 0), ""),
         ("Response time", f"{data['latency_ms']:.0f} ms", "")]
 club_crest = crest(data.get("club_logo_url"), 54) or f"<b>{initials(data['club_name'])}</b>"
@@ -514,8 +527,10 @@ with tab_main:
                  "past signings in the same position, then use recruitment similarity. "
                  "New-talent examples compare position and age. These comparisons help you read "
                  "the suggestions; they do not prove why a player should be signed.")
-        st.write("Market values are estimates. When too few candidates fit the budget, "
-                 "the list includes clearly marked alternatives above it. Shortlist and Dismiss "
+        st.write("Market values are estimates. Players are proposed within the price range: "
+                 "from the minimum value to the budget, both based on what the club usually pays. "
+                 "When too few candidates fit, the list includes clearly marked alternatives "
+                 "outside the range. Shortlist and Dismiss "
                  "save your choice, hide that player and update the recommendations. "
                  "The scouting report compares each statistic with players of the same position.")
     if view == "Cards":

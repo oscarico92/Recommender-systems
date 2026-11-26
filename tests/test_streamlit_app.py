@@ -121,7 +121,22 @@ def test_low_budget_players_are_marked(page_api):
     budget = next(s for s in page.slider if s.label == "Budget per player (M EUR)")
     page = budget.set_value(0.5).run()
     assert not page.exception
+    # floor capped at the budget: cheaper players within budget complete the list first
+    assert any("Below your minimum value" in w.value for w in page.warning)
+    page = page.slider(key="min_m").set_value(0.0).run()
+    assert not page.exception
     assert any("Above budget" in w.value for w in page.warning)
+
+
+def test_minimum_value_starts_from_club_floor_and_is_sent(page_api):
+    page = open_page()
+    floor = next(c["min_value_eur"] for c in page_api.get("/clubs").json() if c["club_id"] == 985)
+    assert page.slider(key="min_m").value == round(floor / 1e6, 2)
+    assert not page.exception
+    assert any("Price range / player" in m.value and f"{floor / 1e6:.1f} to" in m.value for m in page.markdown)
+    page = page.slider(key="min_m").set_value(0.0).run()
+    assert not page.exception
+    assert any("Price range / player" in m.value and "up to" in m.value for m in page.markdown)
 
 
 def test_sliders_start_from_served_model(page_api):

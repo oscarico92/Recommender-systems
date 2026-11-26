@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from eval.harness import EvalSetup, _ndcg, evaluate, top_k
+from eval.harness import EvalSetup, _ndcg, club_value_floors, evaluate, top_k
 from src.rerank import merge_with_cold_slots, rerank_group
 from src.split import temporal_split
 
@@ -62,6 +62,38 @@ def test_rerank_budget_and_resale():
     assert out.tolist() == [1, 2, 0]          # over budget goes last, excluded never appears
     out = rerank_group(scores, value, trend, budget=10e6, resale_weight=5.0, length=2)
     assert out.tolist() == [2, 1]             # strong resale focus favours the rising player
+
+
+def test_rerank_price_floor():
+    scores = np.array([5.0, 4.0, 3.0, 2.0, 1.0])
+    value = np.array([0.2e6, 0.3e6, 20e6, 30e6, 40e6])
+    trend = np.zeros(5)
+    base = rerank_group(scores, value, trend, budget=50e6, resale_weight=0.0, length=3)
+    assert base.tolist() == [0, 1, 2]          # no floor: cheap players lead
+    out = rerank_group(scores, value, trend, budget=50e6, resale_weight=0.0, length=3, min_value=10e6)
+    assert out.tolist() == [2, 3, 4]           # floor: only players in the price range
+    out = rerank_group(scores, value, trend, budget=50e6, resale_weight=0.0, length=4, min_value=10e6)
+    assert out.tolist()[:3] == [2, 3, 4] and out[3] == 0   # too few in range: completed below the floor
+    # the budget stays the hard limit: below the floor before above the budget
+    out = rerank_group(scores, value, trend, budget=25e6, resale_weight=0.0, length=4, min_value=10e6)
+    assert out.tolist() == [2, 0, 1, 3]
+    # the floor also widens the pool: candidates beyond the first n_candidates are reached
+    many = np.arange(100, 0, -1, dtype=float)
+    vals = np.where(np.arange(100) >= 60, 20e6, 0.1e6)
+    out = rerank_group(many, vals, np.zeros(100), budget=50e6, resale_weight=0.0, length=10, min_value=10e6)
+    assert (vals[out] >= 10e6).all()
+
+
+def test_club_value_floors():
+    history = pd.DataFrame({
+        "club_id": [1, 1, 1, 1, 2],
+        "transfer_date": pd.to_datetime(["2025-01-01", "2025-02-01", "2025-03-01", "2025-04-01", "2015-01-01"]),
+        "market_value_eur": [1e6, 2e6, 3e6, 4e6, 5e6],
+    })
+    floors = club_value_floors(history, np.array([1, 2, 3]), "2025-07-01")
+    assert floors[0] == np.quantile([1e6, 2e6, 3e6, 4e6], 0.25)
+    assert floors[1] == 5e6                    # nothing in 3 years: all history
+    assert floors[2] == 0.0                    # unknown club: no floor
 
 
 def test_rerank_age_and_mobility():

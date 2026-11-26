@@ -74,7 +74,7 @@ The trained model is versioned in `models/serving/`, so running the app needs ne
 
    ![ScoutAI interface](docs/figures/app_screenshot.png)
 
-   The budget is compared with estimated market values, not transfer fees. If too few of the model's candidates fit the budget, more expensive players complete the list; the page marks them "Above budget". The explanation panel distinguishes recruitment similarity from profile comparisons for new talents.
+   The players are proposed within a **price range per player**: from a minimum value (25th percentile of the market values the club recruited in the last 3 years) to the budget (90th percentile). Both are set per club and adjustable in the sidebar; a minimum of 0 removes the floor. Without the floor, a big club was offered players far below its level (Paris Saint-Germain, budget 56 M EUR: goalkeepers and midfielders valued 0.2 M EUR). Values are estimated market values, not transfer fees. If too few candidates fit the range, the list is completed first with cheaper players within budget ("Below your minimum value"), then with more expensive ones ("Above budget"). The explanation panel distinguishes recruitment similarity from profile comparisons for new talents.
 
    If a request fails, the page shows a retry message. A failed history request does not mean that the database is empty. If saving an action times out, check the history before clicking again: the server may have saved it before the connection was lost.
 
@@ -102,6 +102,7 @@ PyTorch from PyPI is large. On a machine without a GPU, `pip install torch --ind
 | 4. Evaluate on the test season | `python -m eval.run_experiments` | `eval/results/test_results.md`, `case_studies.md`, `docs/figures/loss_curves.png` |
 | 5. Export the served model | `python -m src.export_model` | `models/serving/` |
 | 5b. Export the player profiles shown in the app (no training) | `python -m src.export_profiles` | `models/serving/player_profiles.parquet`, `value_history.parquet` |
+| 5c. Add the clubs' price floor to an already exported model (no training, step 5 already does it) | `python -m src.export_price_floor` | `models/serving/clubs.parquet` |
 | 6. Retrain with the actions logged in the app (optional) | `python -m src.export_model --feedback` | `models/serving/`, see [data/README.md](data/README.md#5-app-feedback) |
 
 The player features (`src/features.py`) are built automatically at each cutoff and cached in `data/processed/`. Data rules and limits are described in [data/README.md](data/README.md).
@@ -112,7 +113,7 @@ The player features (`src/features.py`) are built automatically at each cutoff a
 - **Base model**: LightGCN (He et al., SIGIR 2020, [arXiv:2002.02126](https://arxiv.org/abs/2002.02126)) on the bipartite club / player graph, PyTorch Geometric implementation, BPR loss with uniform negative sampling.
 - **Cold-start encoder**: an MLP maps 48 player features (age, position, height, market value and its trend, minutes, goals and assists per 90, European games, league, nationality) to the LightGCN embedding space, trained by distillation on the players that are in the graph. It scores players who have never been transferred.
 - **Two lists**: the main list is ranked by LightGCN. The "new talents" list ranks, with the encoder, the players unknown to the graph (no recruitment by a club of the 10 leagues in the last 10 years). The user can also give a few places of the main list to new talents (`cold_slots`, 0 by default because it lowered NDCG@10 on the validation season).
-- **Re-ranking**: the 50 best candidates are filtered by the club's budget (90th percentile of the values it recruited in the last 3 years, or the user's value), then re-ordered using the 12-month market value trend and penalties for age and frequent past moves. Weights are chosen on validation over 3 seeds and stored in `eval/results/best_rerank.json`.
+- **Re-ranking**: the 50 best candidates whose market value is at least the club's price floor (25th percentile of the values it recruited in the last 3 years) are filtered by the club's budget (90th percentile, or the user's values), then re-ordered using the 12-month market value trend and penalties for age and frequent past moves. Weights are chosen on validation over 3 seeds and stored in `eval/results/best_rerank.json`.
 - **Explanations**: for the main list, past signings in the same position come first and are ordered by embedding similarity; other positions fill any remaining places. For new talents, the comparison uses position and age at signing, with a small embedding-similarity term. These are reference players to help read the list, not a causal explanation of the model's ranking.
 - **Feedback loop**: "Shortlist" and "Dismiss" are logged by `/log_interaction`. At once, `/recommend` hides these players and moves the club vector toward the shortlisted ones and away from the dismissed ones (Rocchio update), so similar players move up without retraining. On real recruitments of the validation season this does not improve NDCG@10 (0.0094 with and without), so it adapts the list to the scout rather than making it more accurate. Retraining with the feedback is also possible (`python -m src.export_model --feedback`) but its effect is within the run-to-run noise (see [data/README.md](data/README.md#5-app-feedback)).
 
@@ -158,6 +159,8 @@ What it shows:
 - Absolute values are low because each club signs about 10 players among 17,628 candidates: a random ranking scores 0.0004.
 
 - **Run-to-run instability.** Across 322 clubs at the test cutoff, two seeds share 35.0% of the players in their top 10 on average. The lists shown in the demo and the case studies therefore depend on the training run. The committed model in `models/serving/` is the one used for the showcase. Tracked in issue oscarico92/Recommender-systems#5.
+
+The evaluation tables above were computed before the price floor was added (budget ceiling only); `rerank_group` without `min_value` reproduces them exactly. On the served model, across the 322 clubs, the floor raises the share of the default top 10 inside the club's price range from 66% to 97% (within budget: 98.2% to 99.7%), and for the 18 clubs with a budget above 30 M EUR from 70% to 100%. Its effect on NDCG@10 has not been measured on the test season.
 
 Known limits: new talents lists can include established stars who simply have not moved in 10 years. See the [seed-stability diagnostic](eval/results/seed_stability.md), [case studies](eval/results/case_studies.md) and [training curves](docs/figures/loss_curves.png).
 
