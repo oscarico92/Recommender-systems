@@ -336,3 +336,21 @@ def test_page_starts_without_repo_root_on_python_path(tmp_path):
     result = subprocess.run([sys.executable, "-c", code], cwd=tmp_path,
                             capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_undo_dismiss_restores_ranking_and_preserves_other_club(page_api):
+    page = open_page()
+    button = next(b for b in page.button if b.label == "Dismiss")
+    pid = int(button.key[len("main") + 1:])
+    page_api.post("/log_interaction", json={"club_id": 583, "player_id": pid, "action": "dismissed"})
+    page = button.click().run()
+    assert not page.exception
+    restore = next(b for b in page.button if b.key == f"restore_{pid}")
+    page = restore.click().run()
+    assert not page.exception
+    assert any(b.key == f"maind{pid}" for b in page.button)
+    assert not any(b.key == f"restore_{pid}" for b in page.button)
+    actions = page_api.get("/interactions", params={"club_id": 985}).json()
+    assert [a["action"] for a in actions] == ["restored", "dismissed"]
+    assert page_api.get("/interactions/current", params={"club_id": 583}).json()[0]["action"] == "dismissed"
+    assert page_api.get("/recommend", params={"club_id": 985}).json()["feedback"]["dismissed"] == 0

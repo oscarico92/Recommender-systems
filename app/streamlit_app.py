@@ -160,7 +160,10 @@ def log(club_id: int, player_id: int, action: str, rank: int | None, model_versi
         return
     # The cards were fetched before the click. Fetch both lists again so the
     # saved player disappears and the club's feedback is applied straight away.
-    st.session_state["saved_action"] = f"{action.capitalize()} saved, recommendations updated"
+    st.session_state["saved_action"] = (
+        "Dismissal undone. Player is eligible again; ranking and filters still apply."
+        if action == "restored" else f"{action.capitalize()} saved, recommendations updated"
+    )
     st.rerun()
 
 
@@ -554,8 +557,15 @@ with tab_short:
         st.button("Retry history")
 
     if actions is not None:
+        try:
+            current = requests.get(f"{API}/interactions/current", params={"club_id": club_id}, timeout=5)
+            current.raise_for_status()
+            decisions = current.json()
+        except requests.RequestException:
+            st.warning("Current saved choices could not be loaded. Please try again.")
+            st.stop()
         last: dict[int, str] = {}
-        for a in sorted(actions, key=lambda a: a["id"]):
+        for a in sorted(decisions, key=lambda a: a["id"]):
             if a["action"] != "viewed":
                 last[a["player_id"]] = a["action"]
         short_ids = [p for p, a in last.items() if a in ("shortlisted", "signed")]
@@ -575,6 +585,20 @@ with tab_short:
                         f'<div class="sa-sub">{esc(p.get("position", ""))}, {p.get("age", 0):.0f} y</div>'
                         f'<div class="sa-sub">{(p.get("market_value_eur") or 0) / 1e6:.1f} M EUR</div>'
                         f'</div></div>', unsafe_allow_html=True)
+
+        dismissed_ids = [pid for pid, action in last.items() if action == "dismissed"]
+        with st.expander(f"Dismissed players ({len(dismissed_ids)})", expanded=bool(dismissed_ids)):
+            st.caption("Undo a dismissal to make a player eligible again. Filters and ranking still apply, so the player may not appear in the current top results.")
+            dismissed_profiles = get_profiles(dismissed_ids)
+            if not dismissed_ids:
+                st.info("No dismissed players for this club.")
+            for pid in dismissed_ids:
+                profile = dismissed_profiles.get(pid, {})
+                name = profile.get("name", f"Player {pid}")
+                info, action_col = st.columns([3, 1])
+                info.write(f"{name} — {profile.get('position', 'Unknown position')} · {profile.get('current_club', '')}")
+                if action_col.button("Undo dismiss", key=f"restore_{pid}"):
+                    log(club_id, pid, "restored", None, data.get("model_version"))
 
         st.subheader("Compare players")
         pool = {**{p: q for p, q in profiles.items()}, **short}

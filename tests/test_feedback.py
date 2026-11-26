@@ -117,3 +117,13 @@ def test_shortlisted_player_hidden_by_api(tmp_path):
         assert body["feedback"] == {"liked": 1, "dismissed": 0}
     finally:
         app.dependency_overrides.clear()
+
+
+def test_restored_player_has_no_training_signal():
+    signals = to_signals(_actions([
+        (1, 10, 1, "dismissed", "2026-11-01T10:00:00Z"),
+        (2, 10, 1, "restored", "2026-11-01T11:00:00Z"),
+        (3, 11, 1, "dismissed", "2026-11-01T10:00:00Z"),
+    ]))
+    assert signals.positives.empty
+    assert list(map(tuple, signals.negatives.to_numpy())) == [(11, 1)]

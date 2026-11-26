@@ -82,7 +82,9 @@ The trained model is versioned in `models/serving/`, so running the app needs ne
    - **New talents**: players unknown to the graph, ranked by the cold-start encoder.
    - **Shortlist and compare**: the shortlisted players, and a radar comparison of 2 or 3 players.
 
-   "Shortlist" and "Dismiss" are saved through `/log_interaction` into `data/scoutai.db` (SQLite). After a successful save, both recommendation lists refresh and the player disappears from the suggestions. Actions belong to the club, not the scout account: changing clubs shows the new club's history while keeping the old club's history.
+   "Shortlist" and "Dismiss" are saved through `/log_interaction` into `data/scoutai.db` (SQLite). After a successful save, both recommendation lists refresh and the player disappears from the suggestions. **Undo a dismissal:** open **Shortlist and compare → Dismissed players** and click **Undo dismiss**. The player becomes eligible again and their negative feedback is removed; filters and ranking still determine whether they appear in the current top results. The action history is preserved. Existing databases are migrated automatically to support the `restored` action.
+
+   Actions belong to the club, not the scout account: changing clubs shows the new club's history while keeping the old club's history.
 
    Data: transfermarkt-datasets (CC0). Photos and club crests: Transfermarkt, not covered by that licence. They are loaded by the browser, so they need an internet connection (plan one for the showcase). Without internet, the cards show the player's initials and the rest of the app works the same.
 
