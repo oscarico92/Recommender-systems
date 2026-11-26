@@ -45,6 +45,9 @@ def page_api(monkeypatch, tmp_path):
         monkeypatch.setattr(requests, "post", lambda url, **kw: as_requests_response(
             client.post(urlsplit(url).path, json=kw.get("json"))
         ))
+        monkeypatch.setattr(requests, "patch", lambda url, **kw: as_requests_response(
+            client.patch(urlsplit(url).path, json=kw.get("json"))
+        ))
         try:
             yield client
         finally:
@@ -52,7 +55,14 @@ def page_api(monkeypatch, tmp_path):
             st.cache_data.clear()
 
 
-def open_page():
+def open_page(account: dict | None = None):
+    """The page of a signed-in scout of Manchester United (985), unless another account is given."""
+    page = AppTest.from_file(str(ROOT_DIR / "app/streamlit_app.py"), default_timeout=20)
+    page.session_state["account"] = account or {"username": "test_scout", "club_id": 985}
+    return page.run()
+
+
+def open_login_page():
     return AppTest.from_file(str(ROOT_DIR / "app/streamlit_app.py"), default_timeout=20).run()
 
 
@@ -159,7 +169,28 @@ def test_twenty_recommendations_keep_new_talent_profiles(page_api):
     page = open_page()
     page = next(s for s in page.slider if s.label == "Number of players").set_value(20).run()
     assert not page.exception
+    for toggle in [t for t in page.toggle if t.label == "Scouting report"]:
+        toggle.set_value(True)
+    page = page.run()
+    assert not page.exception
     assert not any(c.value == "No detailed statistics for this player." for c in page.caption)
+
+
+def test_scouting_reports_are_drawn_only_when_opened(page_api):
+    """Drawing every report on every rerun (33 charts) made each click slow in the browser."""
+    def reports(page):
+        return [c for c in page.get("plotly_chart") if c.key != "compare_radar"]
+
+    page = open_page()
+    assert reports(page) == []
+    toggle = next(t for t in page.toggle if t.label == "Scouting report")
+    page = toggle.set_value(True).run()
+    assert not page.exception
+    charts = reports(page)
+    assert len(charts) == 2                       # radar + value curve of that player
+    keys = {c.key for c in charts}
+    page = page.run()                             # a rerun keeps the same chart keys
+    assert {c.key for c in reports(page)} == keys
 
 
 def test_shortlist_over_twenty_players_keeps_every_profile(page_api):
@@ -176,3 +207,97 @@ def test_shortlist_over_twenty_players_keeps_every_profile(page_api):
     assert {page_api.get("/players", params={"ids": str(pid)}).json()[0]["name"] for pid in ids} <= {
         o.split(" (")[0] for o in picker.options
     }
+
+
+def test_login_page_is_shown_first(page_api):
+    page = open_login_page()
+    assert not page.exception
+    assert [t.label for t in page.tabs] == ["Sign in", "Create an account"]
+    assert not any(b.label in {"Shortlist", "Dismiss"} for b in page.button)
+
+
+def fill_sign_up(page, user, pwd, pwd2, club_prefix):
+    page.text_input(key="up_user").input(user)
+    page.text_input(key="up_pwd").input(pwd)
+    page.text_input(key="up_pwd2").input(pwd2)
+    box = page.selectbox(key="up_club")
+    box.set_value(next(o for o in box.options if o.startswith(club_prefix)))
+    return page
+
+
+def test_create_account_then_sign_in_with_the_chosen_club(page_api):
+    page = fill_sign_up(open_login_page(), "scout_celtic", "secret123", "secret123", "Celtic")
+    page = page.button[1].click().run()          # "Create account" (second form button)
+    assert not page.exception
+    assert page.session_state["account"]["username"] == "scout_celtic"
+    assert "Celtic" in " ".join(m.value for m in page.markdown)
+    assert any(b.label == "Shortlist" for b in page.button)
+
+    # log out, then sign in again with the same account
+    page = next(b for b in page.button if b.label == "Log out").click().run()
+    assert [t.label for t in page.tabs] == ["Sign in", "Create an account"]
+    page.text_input(key="in_user").input("scout_celtic")
+    page.text_input(key="in_pwd").input("secret123")
+    page = page.button[0].click().run()
+    assert not page.exception
+    assert page.session_state["account"]["club_id"] == 371
+
+
+def test_wrong_password_and_duplicate_username_are_refused(page_api):
+    page_api.post("/accounts", json={"username": "scout_benfica", "password": "secret123", "club_id": 294})
+    page = open_login_page()
+    page.text_input(key="in_user").input("scout_benfica")
+    page.text_input(key="in_pwd").input("wrong-password")
+    page = page.button[0].click().run()
+    assert "account" not in page.session_state
+    assert any("Wrong username or password" in e.value for e in page.error)
+
+    page = fill_sign_up(open_login_page(), "Scout_Benfica", "secret123", "secret123", "Manchester United")
+    page = page.button[1].click().run()
+    assert "account" not in page.session_state
+    assert any("already taken" in e.value for e in page.error)
+
+
+def test_different_passwords_are_refused(page_api):
+    page = fill_sign_up(open_login_page(), "scout_x", "secret123", "secret124", "Manchester United")
+    page = page.button[1].click().run()
+    assert "account" not in page.session_state
+    assert any("different" in e.value for e in page.error)
+
+
+def test_account_settings_switch_club_and_reset_budget(page_api):
+    page_api.post("/accounts", json={"username": "scout_mufc", "password": "secret123", "club_id": 985})
+    page = open_page({"username": "scout_mufc", "club_id": 985})
+    assert not page.exception
+    old_budget = page.slider(key="budget_m").value
+    page.slider(key="budget_m").set_value(0.05).run()
+    new_club = page.selectbox(key="account_new_club")
+    new_club.set_value(next(o for o in new_club.options if o.startswith("Celtic")))
+    page.text_input(key="account_password").input("secret123")
+    page = next(b for b in page.button if b.label == "Save").click().run()
+    assert not page.exception
+    assert page.session_state["account"] == {"username": "scout_mufc", "club_id": 371}
+    assert "Celtic" in " ".join(m.value for m in page.markdown)
+    expected = next(c["budget_eur"] for c in page_api.get("/clubs").json() if c["club_id"] == 371)
+    assert page.slider(key="budget_m").value == round(max(expected / 1e6, 0.05), 2)
+    assert page.slider(key="budget_m").value != 0.05
+    assert old_budget != 0.05
+
+
+def test_logout_then_sign_in_to_another_club_resets_settings(page_api):
+    page_api.post("/accounts", json={"username": "scout_mufc", "password": "secret123", "club_id": 985})
+    page_api.post("/accounts", json={"username": "scout_celtic", "password": "secret456", "club_id": 371})
+    page = open_page({"username": "scout_mufc", "club_id": 985})
+    page = page.slider(key="budget_m").set_value(61.0).run()
+    page = page.slider(key="resale").set_value(0.2).run()
+    page = next(b for b in page.button if b.label == "Log out").click().run()
+    assert "account" not in page.session_state
+    page.text_input(key="in_user").input("scout_celtic")
+    page.text_input(key="in_pwd").input("secret456")
+    page = next(b for b in page.button if b.label == "Sign in").click().run()
+    assert not page.exception
+    assert page.session_state["account"]["club_id"] == 371
+    expected = next(c["budget_eur"] for c in page_api.get("/clubs").json() if c["club_id"] == 371)
+    assert page.slider(key="budget_m").value == round(max(expected / 1e6, 0.05), 2)
+    defaults = page_api.get("/config").json()
+    assert page.slider(key="resale").value == defaults["resale_weight"]

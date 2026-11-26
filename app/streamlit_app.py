@@ -28,6 +28,13 @@ RADAR_LABELS = {
     "top_league_minutes_share": "Top-league minutes",
     "value_trend": "Value trend",
 }
+SETTINGS_KEYS = ("budget_m", "position", "k", "resale", "youth", "mobility", "cold")
+
+
+def clear_settings() -> None:
+    """Let the next account or club use its own default controls."""
+    for key in SETTINGS_KEYS:
+        st.session_state.pop(key, None)
 
 st.set_page_config(page_title="ScoutAI", page_icon=str(ASSETS / "icon.png"), layout="wide")
 st.logo(str(ASSETS / "logo.svg"), size="large")
@@ -61,6 +68,16 @@ st.markdown(f"""
   .sa-kpi-l {{ color: {MUTED}; font-size: 0.75rem; }}
   .sa-kpi-v {{ color: {INK}; font-size: 1.1rem; font-weight: 700; white-space: nowrap; }}
   .sa-down {{ color: #B3261E; font-weight: 600; font-size: 0.85rem; }}
+  .sa-hero {{ background: linear-gradient(150deg, {GREEN} 0%, #08503A 100%); color: #fff;
+              border-radius: 16px; padding: 40px 36px; min-height: 470px; margin-top: 8px; }}
+  .sa-hero h1 {{ color: #fff; font-size: 2.3rem; margin: 0 0 6px 0; padding: 0; }}
+  .sa-hero .sa-hero-tag {{ color: #D7EDE4; font-size: 1.05rem; line-height: 1.45; margin-bottom: 26px; }}
+  .sa-hero-stats {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 26px; }}
+  .sa-hero-stat {{ background: rgba(255,255,255,0.10); border-radius: 10px; padding: 12px; }}
+  .sa-hero-stat b {{ display: block; font-size: 1.35rem; color: {GOLD}; }}
+  .sa-hero-stat span {{ font-size: 0.8rem; color: #D7EDE4; }}
+  .sa-hero ul {{ margin: 0; padding-left: 18px; color: #EAF5F0; font-size: 0.95rem; line-height: 1.8; }}
+  .sa-login-title {{ font-size: 1.5rem; font-weight: 700; color: {INK}; margin: 6px 0 2px 0; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -181,21 +198,24 @@ def value_chart(player: dict) -> go.Figure | None:
     return fig
 
 
-def scouting_report(p: dict) -> None:
-    """Radar of percentiles within the position, value curve and key stats."""
+def scouting_report(p: dict, key: str) -> None:
+    """Radar of percentiles within the position, value curve and key stats.
+
+    Only drawn when the user opens it. The chart keys are stable (section +
+    player): a key that changes at every rerun makes the browser destroy and
+    redraw every chart after each click, which made the page slow.
+    """
     if not p.get("percentiles"):
         st.caption("No detailed statistics for this player.")
         return
     st.caption("Percentile among players of the same position (last 12 months)")
     st.plotly_chart(radar([p]), use_container_width=True, config={"displayModeBar": False},
-                    key=f"radar{p['player_id']}{st.session_state.setdefault('_chart', 0)}")
-    st.session_state["_chart"] += 1
+                    key=f"radar_{key}")
     st.caption("Market value over the last 5 years")
     fig = value_chart(p)
     if fig is not None:
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False},
-                        key=f"value{p['player_id']}{st.session_state['_chart']}")
-        st.session_state["_chart"] += 1
+                        key=f"value_{key}")
     s = p.get("stats") or {}
     st.markdown(
         f"**{s.get('games') or 0:.0f}** games, **{s.get('minutes') or 0:.0f}** minutes  \n"
@@ -219,25 +239,131 @@ except requests.RequestException:
 labels = {f"{r.club_name} ({r.league_id})": r.club_id for r in clubs.itertuples()}
 default = next((i for i, lab in enumerate(labels) if lab.startswith("Manchester United")), 0)
 
+
+# ---------- sign in / create account ----------
+
+def account_call(path: str, payload: dict, method: str = "post") -> dict | None:
+    """Send an account request and show the API's message if it is refused."""
+    try:
+        r = getattr(requests, method)(f"{API}{path}", json=payload, timeout=10)
+    except requests.RequestException:
+        st.error("Could not reach the API. Check that it is running and try again.")
+        return None
+    if r.status_code in (200, 201):
+        return r.json()
+    try:
+        detail = r.json().get("detail")
+    except ValueError:
+        detail = None
+    if isinstance(detail, list):  # validation error from FastAPI
+        detail = "Username: 3 to 30 letters, digits, dots, dashes or underscores. Password: at least 6 characters."
+    st.error(detail or "The request was refused. Try again.")
+    return None
+
+
+def login_page() -> None:
+    box = st.empty()  # cleared before the rerun, so the form does not linger faded over the app
+    with box.container():
+        hero, form = st.columns([6, 5], gap="large")
+        with hero:
+            st.markdown("""
+<div class="sa-hero">
+  <h1>ScoutAI</h1>
+  <div class="sa-hero-tag">Recruitment recommendations for your club, learned from real transfers
+  across Europe.</div>
+  <div class="sa-hero-stats">
+    <div class="sa-hero-stat"><b>26,000</b><span>transfers learned</span></div>
+    <div class="sa-hero-stat"><b>322</b><span>European clubs</span></div>
+    <div class="sa-hero-stat"><b>17,600</b><span>players ranked</span></div>
+  </div>
+  <ul>
+    <li>A top 10 within your budget, with the reason for each pick</li>
+    <li>New talents: players with no move between these clubs, ranked from their profile</li>
+    <li>Scouting reports, shortlist and side-by-side comparison</li>
+  </ul>
+</div>""", unsafe_allow_html=True)
+        with form:
+            st.markdown('<div class="sa-login-title">Welcome</div>'
+                        '<p class="sa-tag">Sign in, or create an account for the club you recruit for.</p>',
+                        unsafe_allow_html=True)
+            sign_in, sign_up = st.tabs(["Sign in", "Create an account"])
+            with sign_in:
+                with st.form("sign_in"):
+                    user = st.text_input("Username", key="in_user")
+                    pwd = st.text_input("Password", type="password", key="in_pwd")
+                    if st.form_submit_button("Sign in", type="primary", use_container_width=True):
+                        account = account_call("/login", {"username": user, "password": pwd})
+                        if account:
+                            clear_settings()
+                            st.session_state["account"] = account
+                            box.empty()
+                            st.rerun()
+            with sign_up:
+                with st.form("sign_up"):
+                    user = st.text_input("Username", key="up_user",
+                                         help="3 to 30 letters, digits, '.', '-' or '_'")
+                    pwd = st.text_input("Password", type="password", key="up_pwd", help="At least 6 characters")
+                    pwd2 = st.text_input("Confirm password", type="password", key="up_pwd2")
+                    label = st.selectbox("Your recruitment club", list(labels), index=default, key="up_club")
+                    if st.form_submit_button("Create account", type="primary", use_container_width=True):
+                        if pwd != pwd2:
+                            st.error("The two passwords are different.")
+                        else:
+                            account = account_call("/accounts", {"username": user, "password": pwd,
+                                                                 "club_id": int(labels[label])})
+                            if account:
+                                clear_settings()
+                                st.session_state["account"] = account
+                                st.session_state["saved_action"] = f"Account created, welcome {account['username']}"
+                                box.empty()
+                                st.rerun()
+
+
+account = st.session_state.get("account")
+if not account or int(account["club_id"]) not in set(labels.values()):
+    login_page()
+    st.stop()
+
+club_id = int(account["club_id"])
+label = next(lab for lab, cid in labels.items() if cid == club_id)
+
 with st.sidebar:
     st.header("Your club")
-    label = st.selectbox("Club", list(labels), index=default)
-    club_id = labels[label]
+    st.markdown(f"**{esc(label)}**  \nSigned in as {esc(account['username'])}")
+    if st.button("Log out", key="logout"):
+        st.session_state.pop("account", None)
+        clear_settings()
+        st.rerun()
+    with st.expander("Account settings"):
+        with st.form("account_settings"):
+            new_label = st.selectbox("New recruitment club", list(labels),
+                                     index=list(labels).index(label), key="account_new_club")
+            password = st.text_input("Current password", type="password", key="account_password")
+            if st.form_submit_button("Save"):
+                updated = account_call(f"/accounts/{account['username']}",
+                                       {"password": password, "club_id": int(labels[new_label])},
+                                       method="patch")
+                if updated:
+                    st.session_state["account"] = updated
+                    # A new club starts with its own budget and strategy defaults.
+                    clear_settings()
+                    st.session_state["saved_action"] = "Recruitment club updated"
+                    st.rerun()
     usual = float(clubs.set_index("club_id").loc[club_id, "budget_eur"])
     budget_m = st.slider("Budget per player (M EUR)", 0.05, 150.0, round(max(usual / 1e6, 0.05), 2), 0.05,
-                         help="Based on the market values of the club's signings (90th percentile, last 3 years). "
+                         key="budget_m", help="Based on the market values of the club's signings (90th percentile, last 3 years). "
                               "These are estimated values, not transfer fees.")
-    position = st.selectbox("Position", ["All", "Goalkeeper", "Defender", "Midfield", "Attack"])
-    k = st.slider("Number of players", 5, 20, 10)
+    position = st.selectbox("Position", ["All", "Goalkeeper", "Defender", "Midfield", "Attack"], key="position")
+    k = st.slider("Number of players", 5, 20, 10, key="k")
     st.subheader("Strategy")
-    resale = st.slider("Resale focus", 0.0, 2.0, float(defaults["resale_weight"]), 0.1,
+    resale = st.slider("Resale focus", 0.0, 2.0, float(defaults["resale_weight"]), 0.1, key="resale",
                        help="Favours players whose market value went up in the last 12 months.")
-    youth = st.slider("Youth focus", 0.0, 2.0, float(defaults["age_weight"]), 0.1,
+    youth = st.slider("Youth focus", 0.0, 2.0, float(defaults["age_weight"]), 0.1, key="youth",
                       help="Pushes younger players up. The raw model favours players of 28-30, "
                            "clubs actually sign players of about 24.5.")
-    mobility = st.slider("Penalty for frequent movers", 0.0, 2.0, float(defaults["mobility_weight"]), 0.1,
+    mobility = st.slider("Penalty for frequent movers", 0.0, 2.0, float(defaults["mobility_weight"]), 0.1, key="mobility",
                          help="Pushes down players who changed club many times.")
-    cold = st.slider("Places for new talents in the main list", 0, 3, min(int(defaults["cold_slots"]), 3),
+    cold = st.slider("Places for new talents in the main list", 0, 3, min(int(defaults["cold_slots"]), 3), key="cold",
                      help="0 gives the most accurate list. The new talents also have their own tab.")
     st.caption(f"Model {defaults.get('model_version', '')}. Defaults tuned on the 2024/25 season.")
     st.caption("Data: transfermarkt-datasets (CC0). Photos and crests: Transfermarkt. "
@@ -285,8 +411,9 @@ def card(rec: dict, data: dict, section: str, profile: dict | None) -> None:
                 st.caption(f"Profile comparison with your signings: {sims}")
             else:
                 st.caption(f"Recruitment similarity (same position first): {sims}")
-        with st.expander("Scouting report"):
-            scouting_report(profile or {})
+        # drawn only when opened: 16 cards x 2 charts on every rerun made each click slow
+        if st.toggle("Scouting report", key=f"{section}r{rec['player_id']}"):
+            scouting_report(profile or {}, f"{section}{rec['player_id']}")
 
 
 def show(data: dict, section: str, profiles: dict, columns: int = 2) -> None:

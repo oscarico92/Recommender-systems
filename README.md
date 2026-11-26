@@ -60,13 +60,15 @@ The trained model is versioned in `models/serving/`, so running the app needs ne
    streamlit run app/streamlit_app.py
    ```
 
-   It opens http://localhost:8501. Pick a club, adjust the budget, the position and the strategy (resale, youth, frequent movers). The page has three tabs:
+   It opens http://localhost:8501 on a login page. **Create an account** (username, password, and the club you recruit for) or **sign in** with an existing one: the recommendations are then made for the account's club. In the sidebar, **Account settings** changes the recruitment club after checking the password again; **Log out** goes back to the login page. Accounts are stored in the same SQLite database (`accounts` table), passwords as salted PBKDF2-SHA256 hashes, never in clear. This is a demo login: the API itself has no session tokens, so it is not a production authentication.
+
+   Then adjust the budget, the position and the strategy (resale, youth, frequent movers). The page has three tabs:
 
    - **Recommendations**: player cards with photo, club crest, market value and its 12-month trend, and a "Scouting report" (radar of the player's statistics compared with players of the same position, value curve over 5 years, key stats). A table view is also available.
    - **New talents**: players unknown to the graph, ranked by the cold-start encoder.
    - **Shortlist and compare**: the shortlisted players, and a radar comparison of 2 or 3 players.
 
-   "Shortlist" and "Dismiss" are saved through `/log_interaction` into `data/scoutai.db` (SQLite). After a successful save, both recommendation lists refresh and the player disappears from the suggestions.
+   "Shortlist" and "Dismiss" are saved through `/log_interaction` into `data/scoutai.db` (SQLite). After a successful save, both recommendation lists refresh and the player disappears from the suggestions. Actions belong to the club, not the scout account: changing clubs shows the new club's history while keeping the old club's history.
 
    Data: transfermarkt-datasets (CC0). Photos and club crests: Transfermarkt, not covered by that licence. They are loaded by the browser, so they need an internet connection (plan one for the showcase). Without internet, the cards show the player's initials and the rest of the app works the same.
 
