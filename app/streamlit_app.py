@@ -61,6 +61,16 @@ st.markdown(f"""
   .sa-kpi-l {{ color: {MUTED}; font-size: 0.75rem; }}
   .sa-kpi-v {{ color: {INK}; font-size: 1.1rem; font-weight: 700; white-space: nowrap; }}
   .sa-down {{ color: #B3261E; font-weight: 600; font-size: 0.85rem; }}
+  .sa-hero {{ background: linear-gradient(150deg, {GREEN} 0%, #08503A 100%); color: #fff;
+              border-radius: 16px; padding: 40px 36px; min-height: 470px; margin-top: 8px; }}
+  .sa-hero h1 {{ color: #fff; font-size: 2.3rem; margin: 0 0 6px 0; padding: 0; }}
+  .sa-hero .sa-hero-tag {{ color: #D7EDE4; font-size: 1.05rem; line-height: 1.45; margin-bottom: 26px; }}
+  .sa-hero-stats {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 26px; }}
+  .sa-hero-stat {{ background: rgba(255,255,255,0.10); border-radius: 10px; padding: 12px; }}
+  .sa-hero-stat b {{ display: block; font-size: 1.35rem; color: {GOLD}; }}
+  .sa-hero-stat span {{ font-size: 0.8rem; color: #D7EDE4; }}
+  .sa-hero ul {{ margin: 0; padding-left: 18px; color: #EAF5F0; font-size: 0.95rem; line-height: 1.8; }}
+  .sa-login-title {{ font-size: 1.5rem; font-weight: 700; color: {INK}; margin: 6px 0 2px 0; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -181,21 +191,24 @@ def value_chart(player: dict) -> go.Figure | None:
     return fig
 
 
-def scouting_report(p: dict) -> None:
-    """Radar of percentiles within the position, value curve and key stats."""
+def scouting_report(p: dict, key: str) -> None:
+    """Radar of percentiles within the position, value curve and key stats.
+
+    Only drawn when the user opens it. The chart keys are stable (section +
+    player): a key that changes at every rerun makes the browser destroy and
+    redraw every chart after each click, which made the page slow.
+    """
     if not p.get("percentiles"):
         st.caption("No detailed statistics for this player.")
         return
     st.caption("Percentile among players of the same position (last 12 months)")
     st.plotly_chart(radar([p]), use_container_width=True, config={"displayModeBar": False},
-                    key=f"radar{p['player_id']}{st.session_state.setdefault('_chart', 0)}")
-    st.session_state["_chart"] += 1
+                    key=f"radar_{key}")
     st.caption("Market value over the last 5 years")
     fig = value_chart(p)
     if fig is not None:
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False},
-                        key=f"value{p['player_id']}{st.session_state['_chart']}")
-        st.session_state["_chart"] += 1
+                        key=f"value_{key}")
     s = p.get("stats") or {}
     st.markdown(
         f"**{s.get('games') or 0:.0f}** games, **{s.get('minutes') or 0:.0f}** minutes  \n"
@@ -242,37 +255,59 @@ def account_call(path: str, payload: dict) -> dict | None:
 
 
 def login_page() -> None:
-    _, mid, _ = st.columns([1, 2, 1])
-    with mid:
-        st.markdown('<div class="sa-head"><h1>ScoutAI</h1></div>'
-                    '<p class="sa-tag">Sign in to get the recruitment recommendations of your club.</p>',
-                    unsafe_allow_html=True)
-        sign_in, sign_up = st.tabs(["Sign in", "Create an account"])
-        with sign_in:
-            with st.form("sign_in"):
-                user = st.text_input("Username", key="in_user")
-                pwd = st.text_input("Password", type="password", key="in_pwd")
-                if st.form_submit_button("Sign in", type="primary", use_container_width=True):
-                    account = account_call("/login", {"username": user, "password": pwd})
-                    if account:
-                        st.session_state["account"] = account
-                        st.rerun()
-        with sign_up:
-            with st.form("sign_up"):
-                user = st.text_input("Username", key="up_user", help="3 to 30 letters, digits, '.', '-' or '_'")
-                pwd = st.text_input("Password", type="password", key="up_pwd", help="At least 6 characters")
-                pwd2 = st.text_input("Confirm password", type="password", key="up_pwd2")
-                label = st.selectbox("Your recruitment club", list(labels), index=default, key="up_club")
-                if st.form_submit_button("Create account", type="primary", use_container_width=True):
-                    if pwd != pwd2:
-                        st.error("The two passwords are different.")
-                    else:
-                        account = account_call("/accounts", {"username": user, "password": pwd,
-                                                             "club_id": int(labels[label])})
+    box = st.empty()  # cleared before the rerun, so the form does not linger faded over the app
+    with box.container():
+        hero, form = st.columns([6, 5], gap="large")
+        with hero:
+            st.markdown("""
+<div class="sa-hero">
+  <h1>ScoutAI</h1>
+  <div class="sa-hero-tag">Recruitment recommendations for your club, learned from real transfers
+  across Europe.</div>
+  <div class="sa-hero-stats">
+    <div class="sa-hero-stat"><b>26,000</b><span>transfers learned</span></div>
+    <div class="sa-hero-stat"><b>322</b><span>European clubs</span></div>
+    <div class="sa-hero-stat"><b>17,600</b><span>players ranked</span></div>
+  </div>
+  <ul>
+    <li>A top 10 within your budget, with the reason for each pick</li>
+    <li>New talents: players with no move between these clubs, ranked from their profile</li>
+    <li>Scouting reports, shortlist and side-by-side comparison</li>
+  </ul>
+</div>""", unsafe_allow_html=True)
+        with form:
+            st.markdown('<div class="sa-login-title">Welcome</div>'
+                        '<p class="sa-tag">Sign in, or create an account for the club you recruit for.</p>',
+                        unsafe_allow_html=True)
+            sign_in, sign_up = st.tabs(["Sign in", "Create an account"])
+            with sign_in:
+                with st.form("sign_in"):
+                    user = st.text_input("Username", key="in_user")
+                    pwd = st.text_input("Password", type="password", key="in_pwd")
+                    if st.form_submit_button("Sign in", type="primary", use_container_width=True):
+                        account = account_call("/login", {"username": user, "password": pwd})
                         if account:
                             st.session_state["account"] = account
-                            st.session_state["saved_action"] = f"Account created, welcome {account['username']}"
+                            box.empty()
                             st.rerun()
+            with sign_up:
+                with st.form("sign_up"):
+                    user = st.text_input("Username", key="up_user",
+                                         help="3 to 30 letters, digits, '.', '-' or '_'")
+                    pwd = st.text_input("Password", type="password", key="up_pwd", help="At least 6 characters")
+                    pwd2 = st.text_input("Confirm password", type="password", key="up_pwd2")
+                    label = st.selectbox("Your recruitment club", list(labels), index=default, key="up_club")
+                    if st.form_submit_button("Create account", type="primary", use_container_width=True):
+                        if pwd != pwd2:
+                            st.error("The two passwords are different.")
+                        else:
+                            account = account_call("/accounts", {"username": user, "password": pwd,
+                                                                 "club_id": int(labels[label])})
+                            if account:
+                                st.session_state["account"] = account
+                                st.session_state["saved_action"] = f"Account created, welcome {account['username']}"
+                                box.empty()
+                                st.rerun()
 
 
 account = st.session_state.get("account")
@@ -351,8 +386,9 @@ def card(rec: dict, data: dict, section: str, profile: dict | None) -> None:
                 st.caption(f"Profile comparison with your signings: {sims}")
             else:
                 st.caption(f"Recruitment similarity (same position first): {sims}")
-        with st.expander("Scouting report"):
-            scouting_report(profile or {})
+        # drawn only when opened: 16 cards x 2 charts on every rerun made each click slow
+        if st.toggle("Scouting report", key=f"{section}r{rec['player_id']}"):
+            scouting_report(profile or {}, f"{section}{rec['player_id']}")
 
 
 def show(data: dict, section: str, profiles: dict, columns: int = 2) -> None:

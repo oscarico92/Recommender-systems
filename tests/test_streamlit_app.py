@@ -166,7 +166,28 @@ def test_twenty_recommendations_keep_new_talent_profiles(page_api):
     page = open_page()
     page = next(s for s in page.slider if s.label == "Number of players").set_value(20).run()
     assert not page.exception
+    for toggle in [t for t in page.toggle if t.label == "Scouting report"]:
+        toggle.set_value(True)
+    page = page.run()
+    assert not page.exception
     assert not any(c.value == "No detailed statistics for this player." for c in page.caption)
+
+
+def test_scouting_reports_are_drawn_only_when_opened(page_api):
+    """Drawing every report on every rerun (33 charts) made each click slow in the browser."""
+    def reports(page):
+        return [c for c in page.get("plotly_chart") if c.key != "compare_radar"]
+
+    page = open_page()
+    assert reports(page) == []
+    toggle = next(t for t in page.toggle if t.label == "Scouting report")
+    page = toggle.set_value(True).run()
+    assert not page.exception
+    charts = reports(page)
+    assert len(charts) == 2                       # radar + value curve of that player
+    keys = {c.key for c in charts}
+    page = page.run()                             # a rerun keeps the same chart keys
+    assert {c.key for c in reports(page)} == keys
 
 
 def test_shortlist_over_twenty_players_keeps_every_profile(page_api):
