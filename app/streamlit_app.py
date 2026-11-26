@@ -1,7 +1,7 @@
 """ScoutAI front end. Run with: streamlit run app/streamlit_app.py
 
 Needs the API running (uvicorn api.main:app). Set SCOUTAI_API_URL if it
-is not on http://localhost:8000.
+is not on http://127.0.0.1:8000.
 
 Photos and club crests are loaded by the viewer's browser from
 Transfermarkt. Without internet the cards show the player's initials.
@@ -17,7 +17,9 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 
-API = os.environ.get("SCOUTAI_API_URL", "http://localhost:8000")
+# 127.0.0.1 and not "localhost": on Windows, "localhost" is tried in IPv6 first and every
+# request waits about 2 s before falling back to IPv4, where uvicorn listens.
+API = os.environ.get("SCOUTAI_API_URL", "http://127.0.0.1:8000")
 ASSETS = Path(__file__).parent / "assets"
 GREEN, GOLD, INK, MUTED = "#0B6E4F", "#F2C94C", "#1B2430", "#5B6573"
 LEAGUES = {"GB1": "Premier League", "ES1": "LaLiga", "IT1": "Serie A", "L1": "Bundesliga",
@@ -126,17 +128,23 @@ def get_defaults() -> dict:
     return r.json()
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def _profiles_batch(batch: tuple[int, ...]) -> list[dict]:
+    """One call to /players (at most 20 ids). Profiles are static, so the answer is cached;
+    a failed call raises, and Streamlit does not cache exceptions."""
+    r = requests.get(f"{API}/players", params={"ids": ",".join(str(i) for i in batch)}, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+
 def get_profiles(ids: list[int]) -> dict[int, dict]:
     """Photos, stats and value history. The page still works without them."""
     unique = list(dict.fromkeys(int(i) for i in ids))
     profiles: dict[int, dict] = {}
     # The API serves at most 20 players per call, so load them in batches.
     for start in range(0, len(unique), 20):
-        batch = unique[start:start + 20]
         try:
-            r = requests.get(f"{API}/players", params={"ids": ",".join(str(i) for i in batch)}, timeout=10)
-            r.raise_for_status()
-            profiles.update({p["player_id"]: p for p in r.json()})
+            profiles.update({p["player_id"]: p for p in _profiles_batch(tuple(unique[start:start + 20]))})
         except (requests.RequestException, ValueError):
             continue
     return profiles
@@ -378,12 +386,13 @@ with st.sidebar:
     usual_min = club_info.get("min_value_eur", 0.0)
     usual_min = 0.0 if pd.isna(usual_min) else float(usual_min)
     budget_m = st.slider("Budget per player (M EUR)", 0.05, 150.0, round(max(usual / 1e6, 0.05), 2), 0.05,
-                         key="budget_m", help="Maximum market value. Based on the club's signings (90th percentile, last 3 years). "
-                              "These are estimated values, not transfer fees.")
+                         key="budget_m", help="Maximum value per player: players above it go to the end of the list. It is not a target. "
+                              "Default: 90th percentile of the market values of the club's signings over the last 3 years. "
+                              "Estimated values, not transfer fees.")
     min_m = st.slider("Minimum value per player (M EUR)", 0.0, 150.0, round(usual_min / 1e6, 2), 0.05,
                       key="min_m", help="Players below this market value are not proposed. Based on the club's signings "
                            "(25th percentile, last 3 years), so a big club is not offered players far below its level. "
-                           "Set to 0 to see every price.")
+                           "Set to 0 to see every price, academy and low-cost signings included.")
     if min_m > budget_m:
         st.caption("The minimum is above the budget: the budget is used as the minimum.")
     position = st.selectbox("Position", ["All", "Goalkeeper", "Defender", "Midfield", "Attack"], key="position")
