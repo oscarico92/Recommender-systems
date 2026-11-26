@@ -45,6 +45,9 @@ def page_api(monkeypatch, tmp_path):
         monkeypatch.setattr(requests, "post", lambda url, **kw: as_requests_response(
             client.post(urlsplit(url).path, json=kw.get("json"))
         ))
+        monkeypatch.setattr(requests, "patch", lambda url, **kw: as_requests_response(
+            client.patch(urlsplit(url).path, json=kw.get("json"))
+        ))
         try:
             yield client
         finally:
@@ -260,3 +263,22 @@ def test_different_passwords_are_refused(page_api):
     page = page.button[1].click().run()
     assert "account" not in page.session_state
     assert any("different" in e.value for e in page.error)
+
+
+def test_account_settings_switch_club_and_reset_budget(page_api):
+    page_api.post("/accounts", json={"username": "scout_mufc", "password": "secret123", "club_id": 985})
+    page = open_page({"username": "scout_mufc", "club_id": 985})
+    assert not page.exception
+    old_budget = page.slider(key="budget_m").value
+    page.slider(key="budget_m").set_value(0.05).run()
+    new_club = page.selectbox(key="account_new_club")
+    new_club.set_value(next(o for o in new_club.options if o.startswith("Celtic")))
+    page.text_input(key="account_password").input("secret123")
+    page = next(b for b in page.button if b.label == "Save").click().run()
+    assert not page.exception
+    assert page.session_state["account"] == {"username": "scout_mufc", "club_id": 371}
+    assert "Celtic" in " ".join(m.value for m in page.markdown)
+    expected = next(c["budget_eur"] for c in page_api.get("/clubs").json() if c["club_id"] == 371)
+    assert page.slider(key="budget_m").value == round(max(expected / 1e6, 0.05), 2)
+    assert page.slider(key="budget_m").value != 0.05
+    assert old_budget != 0.05

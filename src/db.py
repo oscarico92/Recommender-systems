@@ -105,3 +105,13 @@ def check_account(conn: sqlite3.Connection, username: str, password: str) -> dic
     if not hmac.compare_digest(row["password_hash"], _hash_password(password, bytes.fromhex(row["salt"]))):
         return None
     return {"username": row["username"], "club_id": row["club_id"]}
+
+
+def update_account_club(conn: sqlite3.Connection, username: str, password: str, club_id: int) -> dict | None:
+    """Change a scout's club after checking the current password."""
+    account = check_account(conn, username, password)
+    if account is None:
+        return None
+    conn.execute("UPDATE accounts SET club_id = ? WHERE username = ?", (club_id, account["username"]))
+    conn.commit()
+    return {"username": account["username"], "club_id": club_id}
