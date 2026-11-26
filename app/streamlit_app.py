@@ -219,10 +219,76 @@ except requests.RequestException:
 labels = {f"{r.club_name} ({r.league_id})": r.club_id for r in clubs.itertuples()}
 default = next((i for i, lab in enumerate(labels) if lab.startswith("Manchester United")), 0)
 
+
+# ---------- sign in / create account ----------
+
+def account_call(path: str, payload: dict) -> dict | None:
+    """POST to /login or /accounts. Shows the API's message on a refused request."""
+    try:
+        r = requests.post(f"{API}{path}", json=payload, timeout=10)
+    except requests.RequestException:
+        st.error("Could not reach the API. Check that it is running and try again.")
+        return None
+    if r.status_code in (200, 201):
+        return r.json()
+    try:
+        detail = r.json().get("detail")
+    except ValueError:
+        detail = None
+    if isinstance(detail, list):  # validation error from FastAPI
+        detail = "Username: 3 to 30 letters, digits, dots, dashes or underscores. Password: at least 6 characters."
+    st.error(detail or "The request was refused. Try again.")
+    return None
+
+
+def login_page() -> None:
+    _, mid, _ = st.columns([1, 2, 1])
+    with mid:
+        st.markdown('<div class="sa-head"><h1>ScoutAI</h1></div>'
+                    '<p class="sa-tag">Sign in to get the recruitment recommendations of your club.</p>',
+                    unsafe_allow_html=True)
+        sign_in, sign_up = st.tabs(["Sign in", "Create an account"])
+        with sign_in:
+            with st.form("sign_in"):
+                user = st.text_input("Username", key="in_user")
+                pwd = st.text_input("Password", type="password", key="in_pwd")
+                if st.form_submit_button("Sign in", type="primary", use_container_width=True):
+                    account = account_call("/login", {"username": user, "password": pwd})
+                    if account:
+                        st.session_state["account"] = account
+                        st.rerun()
+        with sign_up:
+            with st.form("sign_up"):
+                user = st.text_input("Username", key="up_user", help="3 to 30 letters, digits, '.', '-' or '_'")
+                pwd = st.text_input("Password", type="password", key="up_pwd", help="At least 6 characters")
+                pwd2 = st.text_input("Confirm password", type="password", key="up_pwd2")
+                label = st.selectbox("Your recruitment club", list(labels), index=default, key="up_club")
+                if st.form_submit_button("Create account", type="primary", use_container_width=True):
+                    if pwd != pwd2:
+                        st.error("The two passwords are different.")
+                    else:
+                        account = account_call("/accounts", {"username": user, "password": pwd,
+                                                             "club_id": int(labels[label])})
+                        if account:
+                            st.session_state["account"] = account
+                            st.session_state["saved_action"] = f"Account created, welcome {account['username']}"
+                            st.rerun()
+
+
+account = st.session_state.get("account")
+if not account or int(account["club_id"]) not in set(labels.values()):
+    login_page()
+    st.stop()
+
+club_id = int(account["club_id"])
+label = next(lab for lab, cid in labels.items() if cid == club_id)
+
 with st.sidebar:
     st.header("Your club")
-    label = st.selectbox("Club", list(labels), index=default)
-    club_id = labels[label]
+    st.markdown(f"**{esc(label)}**  \nSigned in as {esc(account['username'])}")
+    if st.button("Log out", key="logout"):
+        st.session_state.pop("account", None)
+        st.rerun()
     usual = float(clubs.set_index("club_id").loc[club_id, "budget_eur"])
     budget_m = st.slider("Budget per player (M EUR)", 0.05, 150.0, round(max(usual / 1e6, 0.05), 2), 0.05,
                          help="Based on the market values of the club's signings (90th percentile, last 3 years). "

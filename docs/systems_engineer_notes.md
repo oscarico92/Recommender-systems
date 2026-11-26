@@ -64,7 +64,9 @@ The percentages differ slightly from the PR description because this check uses 
 
 Start the API and page using the README. Keep the exported model; retraining can change the players shown. For a rehearsal, use a separate SQLite file so earlier clicks do not hide the demo players.
 
-1. Pick Manchester United. Point out that the sliders start from the settings selected on validation.
+Before the demo, create the accounts of the three case-study clubs (Manchester United, Benfica, Celtic) on the login page, so switching club is "Log out" then "Sign in".
+
+1. Sign in with the Manchester United account (or create it live: username, password, recruitment club). Point out that the sliders start from the settings selected on validation.
 2. Explain one recommendation and its reference signings. The position is prioritised; the similarity inside that group comes from the embeddings.
 3. Lower the budget and show an "Above budget" label if the candidate list needs alternatives. Market value is an estimate, not a guaranteed price.
 4. Open the new-talents section. Explain that "new" means unknown to this transfer graph, not necessarily young or unknown in football.
