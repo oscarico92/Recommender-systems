@@ -1,5 +1,7 @@
 """Exercise the page against the real API/model and a temporary SQLite database."""
 
+import subprocess
+import sys
 from urllib.parse import urlsplit
 
 import pytest
@@ -301,3 +303,21 @@ def test_logout_then_sign_in_to_another_club_resets_settings(page_api):
     assert page.slider(key="budget_m").value == round(max(expected / 1e6, 0.05), 2)
     defaults = page_api.get("/config").json()
     assert page.slider(key="resale").value == defaults["resale_weight"]
+
+
+def test_page_starts_without_repo_root_on_python_path(tmp_path):
+    """Streamlit starts the app from app/, where src/ is not importable."""
+    script = ROOT_DIR / "app/streamlit_app.py"
+    code = (
+        "import requests\n"
+        "from streamlit.testing.v1 import AppTest\n"
+        "def offline(*args, **kwargs):\n"
+        "    raise requests.ConnectionError('offline smoke test')\n"
+        "requests.get = offline\n"
+        f"page = AppTest.from_file({str(script)!r}, default_timeout=20).run()\n"
+        "assert not page.exception, [e.message for e in page.exception]\n"
+        "assert any('Could not load the clubs' in e.value for e in page.error)\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], cwd=tmp_path,
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
