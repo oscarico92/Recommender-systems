@@ -52,7 +52,14 @@ def page_api(monkeypatch, tmp_path):
             st.cache_data.clear()
 
 
-def open_page():
+def open_page(account: dict | None = None):
+    """The page of a signed-in scout of Manchester United (985), unless another account is given."""
+    page = AppTest.from_file(str(ROOT_DIR / "app/streamlit_app.py"), default_timeout=20)
+    page.session_state["account"] = account or {"username": "test_scout", "club_id": 985}
+    return page.run()
+
+
+def open_login_page():
     return AppTest.from_file(str(ROOT_DIR / "app/streamlit_app.py"), default_timeout=20).run()
 
 
@@ -176,3 +183,59 @@ def test_shortlist_over_twenty_players_keeps_every_profile(page_api):
     assert {page_api.get("/players", params={"ids": str(pid)}).json()[0]["name"] for pid in ids} <= {
         o.split(" (")[0] for o in picker.options
     }
+
+
+def test_login_page_is_shown_first(page_api):
+    page = open_login_page()
+    assert not page.exception
+    assert [t.label for t in page.tabs] == ["Sign in", "Create an account"]
+    assert not any(b.label in {"Shortlist", "Dismiss"} for b in page.button)
+
+
+def fill_sign_up(page, user, pwd, pwd2, club_prefix):
+    page.text_input(key="up_user").input(user)
+    page.text_input(key="up_pwd").input(pwd)
+    page.text_input(key="up_pwd2").input(pwd2)
+    box = page.selectbox(key="up_club")
+    box.set_value(next(o for o in box.options if o.startswith(club_prefix)))
+    return page
+
+
+def test_create_account_then_sign_in_with_the_chosen_club(page_api):
+    page = fill_sign_up(open_login_page(), "scout_celtic", "secret123", "secret123", "Celtic")
+    page = page.button[1].click().run()          # "Create account" (second form button)
+    assert not page.exception
+    assert page.session_state["account"]["username"] == "scout_celtic"
+    assert "Celtic" in " ".join(m.value for m in page.markdown)
+    assert any(b.label == "Shortlist" for b in page.button)
+
+    # log out, then sign in again with the same account
+    page = next(b for b in page.button if b.label == "Log out").click().run()
+    assert [t.label for t in page.tabs] == ["Sign in", "Create an account"]
+    page.text_input(key="in_user").input("scout_celtic")
+    page.text_input(key="in_pwd").input("secret123")
+    page = page.button[0].click().run()
+    assert not page.exception
+    assert page.session_state["account"]["club_id"] == 371
+
+
+def test_wrong_password_and_duplicate_username_are_refused(page_api):
+    page_api.post("/accounts", json={"username": "scout_benfica", "password": "secret123", "club_id": 294})
+    page = open_login_page()
+    page.text_input(key="in_user").input("scout_benfica")
+    page.text_input(key="in_pwd").input("wrong-password")
+    page = page.button[0].click().run()
+    assert "account" not in page.session_state
+    assert any("Wrong username or password" in e.value for e in page.error)
+
+    page = fill_sign_up(open_login_page(), "Scout_Benfica", "secret123", "secret123", "Manchester United")
+    page = page.button[1].click().run()
+    assert "account" not in page.session_state
+    assert any("already taken" in e.value for e in page.error)
+
+
+def test_different_passwords_are_refused(page_api):
+    page = fill_sign_up(open_login_page(), "scout_x", "secret123", "secret124", "Manchester United")
+    page = page.button[1].click().run()
+    assert "account" not in page.session_state
+    assert any("different" in e.value for e in page.error)

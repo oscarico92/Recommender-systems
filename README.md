@@ -60,7 +60,9 @@ The trained model is versioned in `models/serving/`, so running the app needs ne
    streamlit run app/streamlit_app.py
    ```
 
-   It opens http://localhost:8501. Pick a club, adjust the budget, the position and the strategy (resale, youth, frequent movers). The page has three tabs:
+   It opens http://localhost:8501 on a login page. **Create an account** (username, password, and the club you recruit for) or **sign in** with an existing one: the recommendations are then made for the account's club, and "Log out" in the sidebar goes back to the login page. Accounts are stored in the same SQLite database (`accounts` table), passwords as salted PBKDF2-SHA256 hashes, never in clear. This is a demo login: the API itself has no session tokens, so it is not a production authentication.
+
+   Then adjust the budget, the position and the strategy (resale, youth, frequent movers). The page has three tabs:
 
    - **Recommendations**: player cards with photo, club crest, market value and its 12-month trend, and a "Scouting report" (radar of the player's statistics compared with players of the same position, value curve over 5 years, key stats). A table view is also available.
    - **New talents**: players unknown to the graph, ranked by the cold-start encoder.
